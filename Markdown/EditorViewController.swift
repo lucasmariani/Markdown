@@ -5,8 +5,8 @@ import WebKit
 
 final class EditorViewController: NSViewController, NSTextViewDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSMenuItemValidation {
     private enum EditorMode: Int {
-        case rendered = 0
-        case source = 1
+        case rendered = 1
+        case source = 0
     }
 
     private static let messageName = "markdownChanged"
@@ -41,18 +41,18 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         let control: NSSegmentedControl
         if let renderedSymbol, let sourceSymbol {
             control = NSSegmentedControl(
-                images: [renderedSymbol, sourceSymbol],
+                images: [sourceSymbol, renderedSymbol],
                 trackingMode: .selectOne,
                 target: self,
                 action: #selector(modeControlChanged(_:))
             )
             control.setWidth(30, forSegment: 0)
             control.setWidth(30, forSegment: 1)
-            control.setToolTip("Rendered Markdown", forSegment: 0)
-            control.setToolTip("Source Markdown", forSegment: 1)
+            control.setToolTip("Rendered Markdown", forSegment: 1)
+            control.setToolTip("Source Markdown", forSegment: 0)
         } else {
             control = NSSegmentedControl(
-                labels: ["Rendered", "Source"],
+                labels: ["Source", "Rendered"],
                 trackingMode: .selectOne,
                 target: self,
                 action: #selector(modeControlChanged(_:))
@@ -424,7 +424,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
     private func loadRenderedEditorShell() {
         isWebEditorReady = false
         debugLog("loadRenderedEditorShell", details: "requested")
-        webView.loadHTMLString(Self.renderedEditorShellHTML, baseURL: nil)
+        webView.loadHTMLString(Self.renderedEditorShellHTML, baseURL: Bundle.main.resourceURL)
     }
 
     private func refreshRenderedView() {
@@ -436,11 +436,32 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         }
 
         let html = MarkdownRenderer.html(from: sourceText)
-        let command = "window.setRenderedHTML(\(javaScriptStringLiteral(for: html)));"
+        let htmlLiteral = javaScriptStringLiteral(for: html)
+        let command = """
+        (() => {
+          const renderedHTML = \(htmlLiteral);
+          if (typeof window.setRenderedHTML === 'function') {
+            try {
+              window.setRenderedHTML(renderedHTML);
+              return 'setRenderedHTML';
+            } catch (error) {
+              console.error('setRenderedHTML failed', error);
+            }
+          }
+
+          const editor = document.getElementById('editor');
+          if (editor) {
+            editor.innerHTML = renderedHTML;
+            return 'fallbackInnerHTML';
+          }
+
+          throw new Error('rendered editor element not found');
+        })()
+        """
         debugLog("refreshBegin", details: "sourceLen=\(sourceText.count) htmlLen=\(html.count)")
 
         isApplyingHTMLToWebView = true
-        webView.evaluateJavaScript(command) { [weak self] _, error in
+        webView.evaluateJavaScript(command) { [weak self] result, error in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 self?.isApplyingHTMLToWebView = false
                 self?.debugLog("refreshApplyFlagCleared", details: "sourceLen=\(self?.sourceText.count ?? -1)")
@@ -449,7 +470,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
                 NSLog("Failed to apply rendered HTML: %@", error.localizedDescription)
                 self?.debugLog("refreshError", details: error.localizedDescription)
             } else {
-                self?.debugLog("refreshEvaluateCompleted", details: "ok")
+                let renderedPath = (result as? String) ?? "unknown"
+                self?.debugLog("refreshEvaluateCompleted", details: "ok path=\(renderedPath)")
             }
         }
     }
@@ -576,6 +598,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
 <head>
   <meta charset=\"utf-8\">
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+  <link rel=\"stylesheet\" href=\"RendererPrettyLights.css\">
   <style>
     :root {
       color-scheme: light dark;
@@ -687,16 +710,49 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
 </head>
 <body>
   <article id=\"editor\" contenteditable=\"true\" spellcheck=\"false\"></article>
+  <script src=\"RendererHighlighter.js\"></script>
 
   <script>
     (() => {
       const editor = document.getElementById('editor');
       let suppressNative = false;
 
+      function postDebug(payload) {
+        try {
+          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.markdownDebug) {
+            window.webkit.messageHandlers.markdownDebug.postMessage(payload);
+          }
+        } catch (_) {
+          // Best-effort debug logging only.
+        }
+      }
+
       function escapeText(text) {
         return text
           .replace(/\\\\/g, '\\\\\\\\')
           .replace(/([`*_{}[\\]()#+\\-.!|>])/g, '\\\\$1');
+      }
+
+      async function highlightCodeBlocks() {
+        if (!window.MarkdownStarryNight || typeof window.MarkdownStarryNight.highlightCodeBlocks !== 'function') {
+          postDebug({
+            event: 'highlight.skip',
+            reason: 'highlighterUnavailable'
+          });
+          return;
+        }
+
+        try {
+          await window.MarkdownStarryNight.highlightCodeBlocks(editor);
+          postDebug({
+            event: 'highlight.done'
+          });
+        } catch (error) {
+          postDebug({
+            event: 'highlight.error',
+            message: String(error)
+          });
+        }
       }
 
       function inlineMarkdown(node) {
@@ -828,7 +884,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         if (event && event.isComposing) return;
 
         const markdown = blockMarkdown(editor).replace(/\\s+$/, '') + '\\n';
-        window.webkit.messageHandlers.markdownDebug.postMessage({
+        postDebug({
           event: 'postMarkdown',
           trusted: event ? !!event.isTrusted : false,
           markdownLen: markdown.length
@@ -845,16 +901,26 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
       window.getMarkdown = () => blockMarkdown(editor).replace(/\\s+$/, '') + '\\n';
 
       window.setRenderedHTML = (html) => {
-        window.webkit.messageHandlers.markdownDebug.postMessage({
+        const safeHTML = typeof html === 'string' ? html : '';
+        postDebug({
           event: 'setRenderedHTML.begin',
-          htmlLen: html ? html.length : 0
+          htmlLen: safeHTML.length
         });
         suppressNative = true;
-        editor.innerHTML = html;
+        try {
+          editor.innerHTML = safeHTML;
+          highlightCodeBlocks();
+        } catch (error) {
+          postDebug({
+            event: 'setRenderedHTML.error',
+            message: String(error)
+          });
+          editor.innerHTML = safeHTML;
+        }
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             suppressNative = false;
-            window.webkit.messageHandlers.markdownDebug.postMessage({
+            postDebug({
               event: 'setRenderedHTML.end',
               textLen: (editor.textContent || '').length
             });

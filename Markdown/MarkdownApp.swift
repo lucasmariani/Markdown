@@ -55,6 +55,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let saveAsItem = fileMenu.addItem(withTitle: "Save As…", action: #selector(EditorViewController.saveDocumentAs(_:)), keyEquivalent: "S")
         saveAsItem.keyEquivalentModifierMask = [.command, .shift]
 
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenuItem.submenu = editMenu
+
+        let undoItem = editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        undoItem.target = nil
+
+        let redoItem = editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        redoItem.keyEquivalentModifierMask = [.command, .shift]
+        redoItem.target = nil
+
+        editMenu.addItem(NSMenuItem.separator())
+
+        let cutItem = editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        cutItem.target = nil
+
+        let copyItem = editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        copyItem.target = nil
+
+        let pasteItem = editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        pasteItem.target = nil
+
+        editMenu.addItem(NSMenuItem.separator())
+
+        let selectAllItem = editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        selectAllItem.target = nil
+
         let viewMenuItem = NSMenuItem()
         mainMenu.addItem(viewMenuItem)
         let viewMenu = NSMenu(title: "View")
@@ -71,8 +99,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        let editorActions: Set<Selector> = [
+            #selector(EditorViewController.newDocument(_:)),
+            #selector(EditorViewController.openDocument(_:)),
+            #selector(EditorViewController.saveDocument(_:)),
+            #selector(EditorViewController.saveDocumentAs(_:)),
+            #selector(EditorViewController.showRendered(_:)),
+            #selector(EditorViewController.showSource(_:)),
+        ]
+
         for item in mainMenu.allItemsRecursively where item.action != #selector(NSApplication.terminate(_:)) {
-            item.target = editorViewController
+            if let action = item.action, editorActions.contains(action) {
+                item.target = editorViewController
+            } else {
+                item.target = nil
+            }
         }
     }
 }

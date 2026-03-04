@@ -626,7 +626,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
     html, body {
       margin: 0;
       padding: 0;
-      background: var(--bg);
+      background: transparent;
       color: var(--text);
       height: 100%;
       font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Helvetica, Arial, sans-serif;
@@ -643,6 +643,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
       white-space: normal;
       word-break: break-word;
       caret-color: var(--text);
+      background: transparent;
     }
 
     #editor:empty::before {

@@ -23,7 +23,24 @@
             }
           ],
           "hidden" : false,
-          "image-name" : "ChatGPT Image Mar 4, 2026 at 11_18_05 PM.png",
+          "image-name-specializations" : [
+            {
+              "value" : "ChatGPT Image Mar 4, 2026 at 11_18_05 PM.png"
+            },
+            {
+              "appearance" : "light",
+              "value" : "ChatGPT Image Mar 4, 2026 at 11_18_05 PM.png"
+            },
+            {
+              "idiom" : "macOS",
+              "value" : "md.png"
+            },
+            {
+              "appearance" : "light",
+              "idiom" : "macOS",
+              "value" : "md.png"
+            }
+          ],
           "name" : "md"
         }
       ],

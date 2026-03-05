@@ -7,7 +7,7 @@
 
 import AppKit
 
-final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
+final class MainWindowController: NSWindowController, NSToolbarDelegate {
     private enum ToolbarItemID {
         static let mode = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.mode")
     }
@@ -21,8 +21,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             backing: .buffered,
             defer: false
         )
-
-        window.title = "Markdown"
         window.minSize = NSSize(width: 700, height: 500)
         window.toolbarStyle = .automatic
         window.titlebarSeparatorStyle = .automatic
@@ -30,19 +28,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         window.isReleasedWhenClosed = false
 
         super.init(window: window)
-
-        window.delegate = self
         window.toolbar = makeToolbar()
         shouldCascadeWindows = true
+
+        NSLog("[MainWindowController] initialized window=%@", String(describing: window))
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
-    }
-
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        editorViewController.confirmCloseWindow()
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {

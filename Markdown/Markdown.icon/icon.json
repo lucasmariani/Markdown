@@ -1,0 +1,48 @@
+{
+  "fill" : {
+    "solid" : "extended-gray:1.00000,0.50000"
+  },
+  "groups" : [
+    {
+      "blend-mode" : "normal",
+      "blur-material" : 1,
+      "layers" : [
+        {
+          "blend-mode" : "normal",
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "extended-gray:0.00000,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "extended-gray:1.00000,1.00000"
+              }
+            }
+          ],
+          "hidden" : false,
+          "image-name" : "ChatGPT Image Mar 4, 2026 at 11_18_05 PM.png",
+          "name" : "md"
+        }
+      ],
+      "lighting" : "combined",
+      "opacity" : 0.7,
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

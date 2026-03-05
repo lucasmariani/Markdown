@@ -71,11 +71,21 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         return controller
     }()
 
+    private lazy var findCoordinator: FindCoordinator = {
+        let coordinator = FindCoordinator(findBarView: findBarView)
+        coordinator.onSearchRequested = { [weak self] query, backwards in
+            self?.performSearch(query: query, backwards: backwards)
+        }
+        coordinator.onDoneRequested = { [weak self] in
+            self?.hideFindBar()
+        }
+        return coordinator
+    }()
+
     var onDocumentTextDidChange: ((String) -> Void)?
 
     private var currentMode: EditorMode = .source
     private var sourceText: String = ""
-    private var activeSearchQuery = ""
 
     var toolbarModeControl: NSSegmentedControl {
         modeControl
@@ -113,7 +123,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         contentSurface.state = .active
         contentSurface.translatesAutoresizingMaskIntoConstraints = false
 
-        configureFindBar()
+        _ = findCoordinator
 
         contentContainer.addSubview(findBarView)
         contentContainer.addSubview(contentSurface)
@@ -178,7 +188,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
 
     @objc func focusSearch(_ sender: Any?) {
         showFindBar()
-        findBarView.focus(initialQuery: activeSearchQuery)
+        findCoordinator.focusSearch()
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -231,28 +241,6 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         }
     }
 
-    private func configureFindBar() {
-        findBarView.onQueryChanged = { [weak self] query in
-            guard let self else {
-                return
-            }
-
-            self.activeSearchQuery = query
-            guard !query.isEmpty else {
-                return
-            }
-            self.performSearch(query: query, backwards: false)
-        }
-
-        findBarView.onFindRequested = { [weak self] backwards in
-            self?.runFind(backwards: backwards)
-        }
-
-        findBarView.onDoneRequested = { [weak self] in
-            self?.hideFindBar()
-        }
-    }
-
     private func showFindBar() {
         findBarView.isHidden = false
         findBarHeightConstraint?.constant = 40
@@ -269,16 +257,6 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         findBarHeightConstraint?.constant = 0
         view.layoutSubtreeIfNeeded()
         findBarView.isHidden = true
-    }
-
-    private func runFind(backwards: Bool) {
-        let query = findBarView.query
-        activeSearchQuery = query
-        guard !query.isEmpty else {
-            return
-        }
-
-        performSearch(query: query, backwards: backwards)
     }
 
     private func performSearch(query: String, backwards: Bool) {

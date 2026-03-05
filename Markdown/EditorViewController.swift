@@ -11,7 +11,7 @@ import os
 import UniformTypeIdentifiers
 import WebKit
 
-final class EditorViewController: NSViewController, NSTextViewDelegate, NSSearchFieldDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSMenuItemValidation {
+final class EditorViewController: NSViewController, NSTextViewDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSMenuItemValidation {
     private enum EditorMode: Int {
         case rendered = 1
         case source = 0
@@ -74,7 +74,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSSearch
     }()
     private let sourceScrollView = NSScrollView(frame: .zero)
     private let sourceTextView = NSTextView(frame: .zero)
-    private weak var toolbarSearchItem: NSSearchToolbarItem?
+    private let findBarView = FindBarView()
+    private var findBarHeightConstraint: NSLayoutConstraint?
 
     private lazy var webView: WKWebView = {
         let userContentController = WKUserContentController()
@@ -117,11 +118,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSSearch
         modeControl
     }
 
-    func attachToolbarSearchItem(_ item: NSSearchToolbarItem) {
-        toolbarSearchItem = item
-        item.endSearchInteraction()
-    }
-
     override func loadView() {
         let rootView = NSVisualEffectView()
         rootView.material = .windowBackground
@@ -138,8 +134,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSSearch
         contentSurface.state = .active
         contentSurface.translatesAutoresizingMaskIntoConstraints = false
 
+        configureFindBar()
+
         configureSourceEditor()
 
+        contentContainer.addSubview(findBarView)
         contentContainer.addSubview(contentSurface)
         contentSurface.addSubview(sourceScrollView)
         contentSurface.addSubview(webView)
@@ -147,9 +146,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSSearch
         sourceScrollView.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
+            findBarView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
+            findBarView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
+            findBarView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
+
             contentSurface.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
             contentSurface.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
-            contentSurface.topAnchor.constraint(equalTo: contentContainer.topAnchor),
+            contentSurface.topAnchor.constraint(equalTo: findBarView.bottomAnchor),
             contentSurface.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
 
             sourceScrollView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
@@ -162,6 +165,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSSearch
             webView.topAnchor.constraint(equalTo: contentSurface.topAnchor),
             webView.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor),
         ])
+        let findBarHeight = findBarView.heightAnchor.constraint(equalToConstant: 0)
+        findBarHeight.isActive = true
+        findBarHeightConstraint = findBarHeight
 
         rootView.addSubview(contentContainer)
 
@@ -264,37 +270,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSSearch
     }
 
     @objc func focusSearch(_ sender: Any?) {
-        toolbarSearchItem?.beginSearchInteraction()
-        if let searchField = toolbarSearchItem?.searchField {
-            if searchField.stringValue.isEmpty && !activeSearchQuery.isEmpty {
-                searchField.stringValue = activeSearchQuery
-            }
-            searchField.selectText(nil)
-        }
-    }
-
-    @objc func toolbarSearchChanged(_ sender: NSSearchField) {
-        let query = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        activeSearchQuery = query
-        guard !query.isEmpty else {
-            return
-        }
-
-        performSearch(query: query, backwards: false)
-    }
-
-    func controlTextDidEndEditing(_ obj: Notification) {
-        guard
-            let searchField = obj.object as? NSSearchField,
-            searchField == toolbarSearchItem?.searchField
-        else {
-            return
-        }
-
-        let query = searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if query.isEmpty {
-            toolbarSearchItem?.endSearchInteraction()
-        }
+        showFindBar()
+        findBarView.focus(initialQuery: activeSearchQuery)
     }
 
     func confirmCloseWindow() -> Bool {
@@ -422,7 +399,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSSearch
         sourceTextView.isSelectable = true
         sourceTextView.isRichText = false
         sourceTextView.allowsUndo = true
-        sourceTextView.usesFindBar = true
+        sourceTextView.usesFindBar = false
         sourceTextView.usesFontPanel = false
         sourceTextView.isAutomaticQuoteSubstitutionEnabled = false
         sourceTextView.isAutomaticDashSubstitutionEnabled = false
@@ -448,6 +425,45 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSSearch
         sourceScrollView.documentView = sourceTextView
 
         webView.setValue(false, forKey: "drawsBackground")
+    }
+
+    private func configureFindBar() {
+        findBarView.onQueryChanged = { [weak self] query in
+            guard let self else { return }
+            self.activeSearchQuery = query
+            guard !query.isEmpty else { return }
+            self.performSearch(query: query, backwards: false)
+        }
+
+        findBarView.onFindRequested = { [weak self] backwards in
+            self?.runFind(backwards: backwards)
+        }
+
+        findBarView.onDoneRequested = { [weak self] in
+            self?.hideFindBar()
+        }
+    }
+
+    private func showFindBar() {
+        findBarView.isHidden = false
+        findBarHeightConstraint?.constant = 40
+        view.layoutSubtreeIfNeeded()
+    }
+
+    private func hideFindBar() {
+        view.window?.makeFirstResponder(currentMode == .source ? sourceTextView : webView)
+        findBarHeightConstraint?.constant = 0
+        view.layoutSubtreeIfNeeded()
+        findBarView.isHidden = true
+    }
+
+    private func runFind(backwards: Bool) {
+        let query = findBarView.query
+        activeSearchQuery = query
+        guard !query.isEmpty else {
+            return
+        }
+        performSearch(query: query, backwards: backwards)
     }
 
     private func performSearch(query: String, backwards: Bool) {
@@ -507,7 +523,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSSearch
 
         sourceTextView.setSelectedRange(match)
         sourceTextView.scrollRangeToVisible(match)
-        view.window?.makeFirstResponder(sourceTextView)
         return true
     }
 

@@ -9,7 +9,6 @@ import AppKit
 
 final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
     private enum ToolbarItemID {
-        static let search = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.search")
         static let mode = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.mode")
     }
 
@@ -47,11 +46,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, ToolbarItemID.search, ToolbarItemID.mode]
+        [.flexibleSpace, ToolbarItemID.mode]
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, ToolbarItemID.search, ToolbarItemID.mode]
+        [.flexibleSpace, ToolbarItemID.mode]
     }
 
     func toolbar(
@@ -60,23 +59,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         switch itemIdentifier {
-        case ToolbarItemID.search:
-            let item = NSSearchToolbarItem(itemIdentifier: ToolbarItemID.search)
-            item.label = "Search"
-            item.paletteLabel = "Search"
-            item.preferredWidthForSearchField = 220
-            item.resignsFirstResponderWithCancel = true
-
-            let searchField = item.searchField
-            searchField.placeholderString = "Find"
-            searchField.sendsSearchStringImmediately = true
-            searchField.sendsWholeSearchString = true
-            searchField.delegate = editorViewController
-            searchField.target = editorViewController
-            searchField.action = #selector(EditorViewController.toolbarSearchChanged(_:))
-
-            editorViewController.attachToolbarSearchItem(item)
-            return item
         case ToolbarItemID.mode:
             let item = NSToolbarItem(itemIdentifier: ToolbarItemID.mode)
             let control = editorViewController.toolbarModeControl

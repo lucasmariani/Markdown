@@ -13,43 +13,6 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         case source = 0
     }
 
-    private lazy var modeControl: NSSegmentedControl = {
-        let renderedSymbol = NSImage(
-            systemSymbolName: "doc.text.image",
-            accessibilityDescription: "Rendered Markdown"
-        )
-        let sourceSymbol = NSImage(
-            systemSymbolName: "chevron.left.forwardslash.chevron.right",
-            accessibilityDescription: "Source Markdown"
-        )
-
-        let control: NSSegmentedControl
-        if let renderedSymbol, let sourceSymbol {
-            control = NSSegmentedControl(
-                images: [sourceSymbol, renderedSymbol],
-                trackingMode: .selectOne,
-                target: self,
-                action: #selector(modeControlChanged(_:))
-            )
-            control.setWidth(30, forSegment: 0)
-            control.setWidth(30, forSegment: 1)
-            control.setToolTip("Rendered Markdown", forSegment: 1)
-            control.setToolTip("Source Markdown", forSegment: 0)
-        } else {
-            control = NSSegmentedControl(
-                labels: ["Source", "Rendered"],
-                trackingMode: .selectOne,
-                target: self,
-                action: #selector(modeControlChanged(_:))
-            )
-        }
-
-        control.segmentStyle = .separated
-        control.controlSize = .small
-        control.selectedSegment = EditorMode.source.rawValue
-        return control
-    }()
-
     private let renderedContainerView = NSView(frame: .zero)
     private let findBarView = FindBarView()
 
@@ -83,13 +46,10 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     }()
 
     var onDocumentTextDidChange: ((String) -> Void)?
+    var onModeChanged: ((Bool) -> Void)?
 
     private var currentMode: EditorMode = .source
     private var sourceText: String = ""
-
-    var toolbarModeControl: NSSegmentedControl {
-        modeControl
-    }
 
     func setDocumentText(_ text: String) {
         sourceText = text
@@ -176,6 +136,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     override func viewDidLoad() {
         super.viewDidLoad()
         sourceController.setText(sourceText)
+        onModeChanged?(false)
     }
 
     @objc func showRendered(_ sender: Any?) {
@@ -204,13 +165,6 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         }
     }
 
-    @objc private func modeControlChanged(_ sender: NSSegmentedControl) {
-        guard let mode = EditorMode(rawValue: sender.selectedSegment) else {
-            return
-        }
-        setMode(mode)
-    }
-
     private func setMode(_ mode: EditorMode) {
         guard currentMode != mode else {
             return
@@ -223,7 +177,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
             }
 
             guard renderedController.ensureWebView() else {
-                modeControl.selectedSegment = EditorMode.source.rawValue
+                onModeChanged?(false)
                 return
             }
         }
@@ -231,7 +185,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         currentMode = mode
         sourceController.scrollView.isHidden = (mode == .rendered)
         renderedContainerView.isHidden = (mode == .source)
-        modeControl.selectedSegment = mode.rawValue
+        onModeChanged?(mode == .rendered)
 
         if mode == .rendered {
             renderedController.render(markdown: sourceText)

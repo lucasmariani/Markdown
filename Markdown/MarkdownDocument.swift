@@ -9,6 +9,7 @@ import AppKit
 
 final class MarkdownDocument: NSDocument {
     private nonisolated static let markdownTypeIdentifier = "net.daringfireball.markdown"
+    private static let unsavedSubtitle = "Unsaved Markdown Document"
 
     nonisolated(unsafe) private var textStorage = ""
     nonisolated(unsafe) private weak var editorViewController: EditorViewController?
@@ -41,6 +42,7 @@ final class MarkdownDocument: NSDocument {
             window.center()
             NSLog("[MarkdownDocument] makeWindowControllers window centered frame=%@", NSStringFromRect(window.frame))
         }
+        updateWindowSubtitle()
         NSLog("[MarkdownDocument] makeWindowControllers end windowControllers=%ld", windowControllers.count)
     }
 
@@ -71,5 +73,12 @@ final class MarkdownDocument: NSDocument {
         }
         textStorage = text
         updateChangeCount(.changeDone)
+    }
+
+    private func updateWindowSubtitle() {
+        let subtitle = fileURL?.deletingLastPathComponent().path(percentEncoded: false) ?? Self.unsavedSubtitle
+        for controller in windowControllers {
+            controller.window?.subtitle = subtitle
+        }
     }
 }

@@ -9,10 +9,21 @@ import AppKit
 
 final class MainWindowController: NSWindowController, NSToolbarDelegate {
     private enum ToolbarItemID {
-        static let mode = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.mode")
+        static let source = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.source")
+        static let rendered = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.rendered")
     }
 
     let editorViewController = EditorViewController()
+    private lazy var sourceModeButton: NSButton = makeModeButton(
+        symbolName: "chevron.left.forwardslash.chevron.right",
+        action: #selector(EditorViewController.showSource(_:)),
+        toolTip: "Source Markdown"
+    )
+    private lazy var renderedModeButton: NSButton = makeModeButton(
+        symbolName: "doc.text.image",
+        action: #selector(EditorViewController.showRendered(_:)),
+        toolTip: "Rendered Markdown"
+    )
 
     init() {
         let window = NSWindow(
@@ -31,6 +42,13 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
         window.toolbar = makeToolbar()
         shouldCascadeWindows = true
 
+        editorViewController.onModeChanged = { [weak self] isRendered in
+            self?.sourceModeButton.state = isRendered ? .off : .on
+            self?.renderedModeButton.state = isRendered ? .on : .off
+        }
+        sourceModeButton.state = .on
+        renderedModeButton.state = .off
+
         NSLog("[MainWindowController] initialized window=%@", String(describing: window))
     }
 
@@ -40,11 +58,11 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, ToolbarItemID.mode]
+        [.flexibleSpace, ToolbarItemID.source, ToolbarItemID.rendered]
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, ToolbarItemID.mode]
+        [.flexibleSpace, ToolbarItemID.source, ToolbarItemID.rendered]
     }
 
     func toolbar(
@@ -53,14 +71,17 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         switch itemIdentifier {
-        case ToolbarItemID.mode:
-            let item = NSToolbarItem(itemIdentifier: ToolbarItemID.mode)
-            let control = editorViewController.toolbarModeControl
-
-            item.label = "Mode"
-            item.paletteLabel = "Mode"
-            item.view = control
-
+        case ToolbarItemID.source:
+            let item = NSToolbarItem(itemIdentifier: ToolbarItemID.source)
+            item.label = "Source"
+            item.paletteLabel = "Source"
+            item.view = sourceModeButton
+            return item
+        case ToolbarItemID.rendered:
+            let item = NSToolbarItem(itemIdentifier: ToolbarItemID.rendered)
+            item.label = "Rendered"
+            item.paletteLabel = "Rendered"
+            item.view = renderedModeButton
             return item
         default:
             return nil
@@ -71,6 +92,20 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
         let toolbar = NSToolbar(identifier: "MarkdownMainToolbar")
         toolbar.delegate = self
         toolbar.allowsUserCustomization = false
+        toolbar.displayMode = .iconOnly
         return toolbar
+    }
+
+    private func makeModeButton(symbolName: String, action: Selector, toolTip: String) -> NSButton {
+        let image = NSImage(
+            systemSymbolName: symbolName,
+            accessibilityDescription: toolTip
+        ) ?? NSImage()
+        let button = NSButton(image: image, target: editorViewController, action: action)
+        button.setButtonType(.toggle)
+        button.bezelStyle = .texturedRounded
+        button.imagePosition = .imageOnly
+        button.toolTip = toolTip
+        return button
     }
 }

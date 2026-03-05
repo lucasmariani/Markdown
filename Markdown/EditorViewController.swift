@@ -5,36 +5,13 @@
 //  Created by Lucas on 4/3/26.
 //
 
-
 import AppKit
-import os
-import UniformTypeIdentifiers
-import WebKit
 
-final class EditorViewController: NSViewController, NSTextViewDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSMenuItemValidation {
+final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuItemValidation {
     private enum EditorMode: Int {
         case rendered = 1
         case source = 0
     }
-
-    private static let messageName = "markdownChanged"
-    private static let debugMessageName = "markdownDebug"
-
-    private static let preferredMarkdownType = UTType(filenameExtension: "md", conformingTo: .text) ?? .plainText
-
-    private static let supportedMarkdownTypes: [UTType] = {
-        var types: [UTType] = []
-        if let md = UTType(filenameExtension: "md", conformingTo: .text) {
-            types.append(md)
-        }
-        if let markdown = UTType(filenameExtension: "markdown", conformingTo: .text) {
-            types.append(markdown)
-        }
-        if !types.contains(.plainText) {
-            types.append(.plainText)
-        }
-        return types
-    }()
 
     private lazy var modeControl: NSSegmentedControl = {
         let renderedSymbol = NSImage(
@@ -72,50 +49,50 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         control.selectedSegment = EditorMode.source.rawValue
         return control
     }()
+
     private let sourceScrollView = NSScrollView(frame: .zero)
     private let sourceTextView = NSTextView(frame: .zero)
+    private let renderedContainerView = NSView(frame: .zero)
     private let findBarView = FindBarView()
+
     private var findBarHeightConstraint: NSLayoutConstraint?
 
-    private lazy var webView: WKWebView = {
-        let userContentController = WKUserContentController()
-        userContentController.add(self, name: Self.messageName)
-        userContentController.add(self, name: Self.debugMessageName)
-
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController = userContentController
-
-        let view = WKWebView(frame: .zero, configuration: configuration)
-        view.navigationDelegate = self
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
+    private lazy var renderedController: RenderedEditorController = {
+        let controller = RenderedEditorController(containerView: renderedContainerView)
+        controller.onMarkdownInput = { [weak self] markdown in
+            self?.handleRenderedMarkdownInput(markdown)
+        }
+        return controller
     }()
 
+    var onDocumentTextDidChange: ((String) -> Void)?
+
     private var currentMode: EditorMode = .source
-    private var currentFileURL: URL? {
-        didSet { updateWindowPresentation() }
-    }
-
     private var sourceText: String = ""
-
-    private var hasUnsavedChanges = false {
-        didSet { updateWindowPresentation() }
-    }
-
-    private var isUpdatingSourceProgrammatically = false
-    private var isApplyingHTMLToWebView = false
-    private var isWebEditorReady = false
-    private var pendingRenderedRefresh = false
     private var activeSearchQuery = ""
-    private let logger = Logger(subsystem: "com.rianamiCorp.Markdown", category: "EditorViewController")
-
-    deinit {
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: Self.messageName)
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: Self.debugMessageName)
-    }
+    private var isUpdatingSourceProgrammatically = false
 
     var toolbarModeControl: NSSegmentedControl {
         modeControl
+    }
+
+    func setDocumentText(_ text: String) {
+        sourceText = text
+
+        isUpdatingSourceProgrammatically = true
+        sourceTextView.string = text
+        isUpdatingSourceProgrammatically = false
+
+        if currentMode == .rendered {
+            renderedController.render(markdown: sourceText)
+        }
+    }
+
+    func documentTextSnapshot() -> String {
+        if currentMode == .source {
+            sourceText = sourceTextView.string
+        }
+        return sourceText
     }
 
     override func loadView() {
@@ -135,15 +112,15 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         contentSurface.translatesAutoresizingMaskIntoConstraints = false
 
         configureFindBar()
-
         configureSourceEditor()
 
         contentContainer.addSubview(findBarView)
         contentContainer.addSubview(contentSurface)
         contentSurface.addSubview(sourceScrollView)
-        contentSurface.addSubview(webView)
+        contentSurface.addSubview(renderedContainerView)
 
         sourceScrollView.translatesAutoresizingMaskIntoConstraints = false
+        renderedContainerView.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
             findBarView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
@@ -160,17 +137,17 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
             sourceScrollView.topAnchor.constraint(equalTo: contentSurface.topAnchor),
             sourceScrollView.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor),
 
-            webView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: contentSurface.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor),
+            renderedContainerView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
+            renderedContainerView.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor),
+            renderedContainerView.topAnchor.constraint(equalTo: contentSurface.topAnchor),
+            renderedContainerView.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor),
         ])
+
         let findBarHeight = findBarView.heightAnchor.constraint(equalToConstant: 0)
         findBarHeight.isActive = true
         findBarHeightConstraint = findBarHeight
 
         rootView.addSubview(contentContainer)
-
         let cornerAdaptiveGuide = rootView.layoutGuide(for: .safeArea(cornerAdaptation: .horizontal))
 
         NSLayoutConstraint.activate([
@@ -181,84 +158,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         ])
 
         self.view = rootView
-
         sourceScrollView.isHidden = false
-        webView.isHidden = true
+        renderedContainerView.isHidden = true
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-
         sourceTextView.string = sourceText
-        loadRenderedEditorShell()
-        updateWindowPresentation()
-    }
-
-    @objc func newDocument(_ sender: Any?) {
-        guard confirmDiscardChangesIfNeeded() else {
-            return
-        }
-
-        sourceText = ""
-        currentFileURL = nil
-        hasUnsavedChanges = false
-
-        isUpdatingSourceProgrammatically = true
-        sourceTextView.string = sourceText
-        isUpdatingSourceProgrammatically = false
-
-        if currentMode == .rendered {
-            refreshRenderedView()
-        }
-    }
-
-    @objc func openDocument(_ sender: Any?) {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = Self.supportedMarkdownTypes
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.allowsMultipleSelection = false
-
-        guard panel.runModal() == .OK, let url = panel.url else {
-            return
-        }
-
-        _ = openDocument(at: url)
-    }
-
-    @discardableResult
-    func openDocument(at url: URL) -> Bool {
-        guard confirmDiscardChangesIfNeeded() else {
-            return false
-        }
-
-        do {
-            let text = try String(contentsOf: url, encoding: .utf8)
-            sourceText = text
-            currentFileURL = url
-            hasUnsavedChanges = false
-
-            isUpdatingSourceProgrammatically = true
-            sourceTextView.string = text
-            isUpdatingSourceProgrammatically = false
-
-            if currentMode == .rendered {
-                refreshRenderedView()
-            }
-
-            return true
-        } catch {
-            presentError(error)
-            return false
-        }
-    }
-
-    @objc func saveDocument(_ sender: Any?) {
-        _ = saveDocumentSynchronously()
-    }
-
-    @objc func saveDocumentAs(_ sender: Any?) {
-        _ = saveDocumentAsSynchronously()
     }
 
     @objc func showRendered(_ sender: Any?) {
@@ -272,10 +178,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
     @objc func focusSearch(_ sender: Any?) {
         showFindBar()
         findBarView.focus(initialQuery: activeSearchQuery)
-    }
-
-    func confirmCloseWindow() -> Bool {
-        confirmDiscardChangesIfNeeded()
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -297,61 +199,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         }
 
         sourceText = sourceTextView.string
-        hasUnsavedChanges = true
-    }
-
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        isWebEditorReady = true
-        if pendingRenderedRefresh || currentMode == .rendered {
-            refreshRenderedView()
-            pendingRenderedRefresh = false
-        }
-
-        if currentMode == .rendered {
-            sourceScrollView.isHidden = true
-            webView.isHidden = false
-        }
-    }
-
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        if message.name == Self.debugMessageName {
-            return
-        }
-
-        guard message.name == Self.messageName else {
-            return
-        }
-
-        if isApplyingHTMLToWebView {
-            return
-        }
-
-        let markdown: String
-        if let payload = message.body as? [String: Any] {
-            guard
-                let reason = payload["reason"] as? String,
-                reason == "input",
-                let trusted = payload["trusted"] as? Bool,
-                trusted,
-                let markdownValue = payload["markdown"] as? String
-            else {
-                return
-            }
-            markdown = markdownValue
-        } else if let markdownValue = message.body as? String {
-            markdown = markdownValue
-        } else {
-            return
-        }
-
-        sourceText = markdown
-        hasUnsavedChanges = true
-
-        if currentMode == .source {
-            isUpdatingSourceProgrammatically = true
-            sourceTextView.string = markdown
-            isUpdatingSourceProgrammatically = false
-        }
+        onDocumentTextDidChange?(sourceText)
     }
 
     @objc private func modeControlChanged(_ sender: NSSegmentedControl) {
@@ -371,21 +219,20 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
             if sourceText.isEmpty || !latestSource.isEmpty {
                 sourceText = latestSource
             }
+
+            guard renderedController.ensureWebView() else {
+                modeControl.selectedSegment = EditorMode.source.rawValue
+                return
+            }
         }
 
         currentMode = mode
-
-        if mode == .rendered && !isWebEditorReady {
-            sourceScrollView.isHidden = false
-            webView.isHidden = true
-        } else {
-            sourceScrollView.isHidden = mode == .rendered
-            webView.isHidden = mode == .source
-        }
+        sourceScrollView.isHidden = (mode == .rendered)
+        renderedContainerView.isHidden = (mode == .source)
         modeControl.selectedSegment = mode.rawValue
 
         if mode == .rendered {
-            refreshRenderedView()
+            renderedController.render(markdown: sourceText)
         } else {
             isUpdatingSourceProgrammatically = true
             sourceTextView.string = sourceText
@@ -423,15 +270,18 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         sourceScrollView.drawsBackground = false
         sourceScrollView.scrollerStyle = .overlay
         sourceScrollView.documentView = sourceTextView
-
-        webView.setValue(false, forKey: "drawsBackground")
     }
 
     private func configureFindBar() {
         findBarView.onQueryChanged = { [weak self] query in
-            guard let self else { return }
+            guard let self else {
+                return
+            }
+
             self.activeSearchQuery = query
-            guard !query.isEmpty else { return }
+            guard !query.isEmpty else {
+                return
+            }
             self.performSearch(query: query, backwards: false)
         }
 
@@ -451,7 +301,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
     }
 
     private func hideFindBar() {
-        view.window?.makeFirstResponder(currentMode == .source ? sourceTextView : webView)
+        if currentMode == .source {
+            view.window?.makeFirstResponder(sourceTextView)
+        } else {
+            renderedController.focus(in: view.window)
+        }
+
         findBarHeightConstraint?.constant = 0
         view.layoutSubtreeIfNeeded()
         findBarView.isHidden = true
@@ -463,29 +318,15 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         guard !query.isEmpty else {
             return
         }
+
         performSearch(query: query, backwards: backwards)
     }
 
     private func performSearch(query: String, backwards: Bool) {
         if currentMode == .rendered {
-            performRenderedSearch(query: query, backwards: backwards)
+            renderedController.find(query: query, backwards: backwards)
         } else {
             _ = performSourceSearch(query: query, backwards: backwards)
-        }
-    }
-
-    private func performRenderedSearch(query: String, backwards: Bool) {
-        guard isWebEditorReady else {
-            return
-        }
-
-        let configuration = WKFindConfiguration()
-        configuration.backwards = backwards
-        configuration.caseSensitive = false
-        configuration.wraps = true
-
-        webView.find(query, configuration: configuration) { [weak self] result in
-            
         }
     }
 
@@ -526,164 +367,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         return true
     }
 
-    private func loadRenderedEditorShell() {
-        isWebEditorReady = false
-        webView.loadHTMLString(RenderedEditorShellHTML.standard, baseURL: Bundle.main.resourceURL)
-    }
+    private func handleRenderedMarkdownInput(_ markdown: String) {
+        sourceText = markdown
+        onDocumentTextDidChange?(sourceText)
 
-    private func refreshRenderedView() {
-        guard isWebEditorReady else {
-            pendingRenderedRefresh = true
-            loadRenderedEditorShell()
-            return
-        }
-
-        let html = MarkdownRenderer.html(from: sourceText)
-        let htmlLiteral = javaScriptStringLiteral(for: html)
-        let command = """
-        (() => {
-          const renderedHTML = \(htmlLiteral);
-          if (typeof window.setRenderedHTML === 'function') {
-            try {
-              window.setRenderedHTML(renderedHTML);
-              return 'setRenderedHTML';
-            } catch (error) {
-              console.error('setRenderedHTML failed', error);
-            }
-          }
-        
-          const editor = document.getElementById('editor');
-          if (editor) {
-            editor.innerHTML = renderedHTML;
-            return 'fallbackInnerHTML';
-          }
-        
-          throw new Error('rendered editor element not found');
-        })()
-        """
-
-        isApplyingHTMLToWebView = true
-        webView.evaluateJavaScript(command) { [weak self] result, error in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                self?.isApplyingHTMLToWebView = false
-            }
-            if let error {
-                NSLog("Failed to apply rendered HTML: %@", error.localizedDescription)
-            } else {
-                let renderedPath = (result as? String) ?? "unknown"
-            }
-        }
-    }
-
-    func webView(
-        _ webView: WKWebView,
-        didFail navigation: WKNavigation!,
-        withError error: any Error
-    ) {
-    }
-
-    func webView(
-        _ webView: WKWebView,
-        didFailProvisionalNavigation navigation: WKNavigation!,
-        withError error: any Error
-    ) {
-        return
-    }
-
-    private func updateWindowPresentation() {
-        let title = currentFileURL?.lastPathComponent ?? "Untitled.md"
-        let subtitle = currentFileURL?.deletingLastPathComponent().path(percentEncoded: false) ?? "Unsaved Markdown Document"
-
-        guard let window = view.window else {
-            return
-        }
-
-        window.title = title
-        window.subtitle = subtitle
-        window.isDocumentEdited = hasUnsavedChanges
-    }
-
-    private func confirmDiscardChangesIfNeeded() -> Bool {
-        guard hasUnsavedChanges else {
-            return true
-        }
-
-        let alert = NSAlert()
-        alert.messageText = "Do you want to save changes to this document?"
-        alert.informativeText = "Your changes will be lost if you don’t save them."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Discard")
-
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:
-            return saveDocumentSynchronously()
-        case .alertThirdButtonReturn:
-            return true
-        default:
-            return false
-        }
-    }
-
-    private func saveDocumentSynchronously() -> Bool {
         if currentMode == .source {
-            sourceText = sourceTextView.string
-        }
-
-        if let url = currentFileURL {
-            do {
-                try writeCurrentDocument(to: url)
-                return true
-            } catch {
-                presentError(error)
-                return false
-            }
-        }
-
-        return saveDocumentAsSynchronously()
-    }
-
-    private func saveDocumentAsSynchronously() -> Bool {
-        if currentMode == .source {
-            sourceText = sourceTextView.string
-        }
-
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [Self.preferredMarkdownType]
-        panel.canCreateDirectories = true
-        panel.nameFieldStringValue = currentFileURL?.lastPathComponent ?? "Untitled.md"
-
-        guard panel.runModal() == .OK, let url = panel.url else {
-            return false
-        }
-
-        do {
-            try writeCurrentDocument(to: url)
-            return true
-        } catch {
-            presentError(error)
-            return false
+            isUpdatingSourceProgrammatically = true
+            sourceTextView.string = markdown
+            isUpdatingSourceProgrammatically = false
         }
     }
-
-    private func writeCurrentDocument(to url: URL) throws {
-        let normalized = sourceText.replacingOccurrences(of: "\r\n", with: "\n")
-        try normalized.write(to: url, atomically: true, encoding: .utf8)
-
-        currentFileURL = url
-        hasUnsavedChanges = false
-    }
-
-    private func javaScriptStringLiteral(for value: String) -> String {
-        guard
-            let data = try? JSONSerialization.data(withJSONObject: [value], options: []),
-            let jsonArray = String(data: data, encoding: .utf8)
-        else {
-            return "\"\""
-        }
-
-        return String(jsonArray.dropFirst().dropLast())
-    }
-
 }

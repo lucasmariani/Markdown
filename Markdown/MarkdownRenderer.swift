@@ -1,3 +1,10 @@
+//
+//  MarkdownRenderer.swift
+//  Markdown
+//
+//  Created by Lucas on 4/3/26.
+//
+
 import Foundation
 import Markdown
 

@@ -1,9 +1,17 @@
+//
+//  EditorViewController.swift
+//  Markdown
+//
+//  Created by Lucas on 4/3/26.
+//
+
+
 import AppKit
 import os
 import UniformTypeIdentifiers
 import WebKit
 
-final class EditorViewController: NSViewController, NSTextViewDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSMenuItemValidation {
+final class EditorViewController: NSViewController, NSTextViewDelegate, NSSearchFieldDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSMenuItemValidation {
     private enum EditorMode: Int {
         case rendered = 1
         case source = 0
@@ -66,6 +74,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
     }()
     private let sourceScrollView = NSScrollView(frame: .zero)
     private let sourceTextView = NSTextView(frame: .zero)
+    private weak var toolbarSearchItem: NSSearchToolbarItem?
 
     private lazy var webView: WKWebView = {
         let userContentController = WKUserContentController()
@@ -96,6 +105,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
     private var isApplyingHTMLToWebView = false
     private var isWebEditorReady = false
     private var pendingRenderedRefresh = false
+    private var activeSearchQuery = ""
     private let logger = Logger(subsystem: "com.rianamiCorp.Markdown", category: "EditorViewController")
 
     deinit {
@@ -105,6 +115,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
 
     var toolbarModeControl: NSSegmentedControl {
         modeControl
+    }
+
+    func attachToolbarSearchItem(_ item: NSSearchToolbarItem) {
+        toolbarSearchItem = item
+        item.endSearchInteraction()
     }
 
     override func loadView() {
@@ -171,7 +186,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         sourceTextView.string = sourceText
         loadRenderedEditorShell()
         updateWindowPresentation()
-        debugLog("viewDidLoad", details: "sourceLen=\(sourceText.count)")
     }
 
     @objc func newDocument(_ sender: Any?) {
@@ -249,6 +263,40 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         setMode(.source)
     }
 
+    @objc func focusSearch(_ sender: Any?) {
+        toolbarSearchItem?.beginSearchInteraction()
+        if let searchField = toolbarSearchItem?.searchField {
+            if searchField.stringValue.isEmpty && !activeSearchQuery.isEmpty {
+                searchField.stringValue = activeSearchQuery
+            }
+            searchField.selectText(nil)
+        }
+    }
+
+    @objc func toolbarSearchChanged(_ sender: NSSearchField) {
+        let query = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        activeSearchQuery = query
+        guard !query.isEmpty else {
+            return
+        }
+
+        performSearch(query: query, backwards: false)
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard
+            let searchField = obj.object as? NSSearchField,
+            searchField == toolbarSearchItem?.searchField
+        else {
+            return
+        }
+
+        let query = searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
+            toolbarSearchItem?.endSearchInteraction()
+        }
+    }
+
     func confirmCloseWindow() -> Bool {
         confirmDiscardChangesIfNeeded()
     }
@@ -273,12 +321,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
 
         sourceText = sourceTextView.string
         hasUnsavedChanges = true
-        debugLog("textDidChange", details: "newSourceLen=\(sourceText.count)")
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         isWebEditorReady = true
-        debugLog("webViewDidFinish", details: "currentMode=\(currentMode.rawValue) pendingRefresh=\(pendingRenderedRefresh)")
         if pendingRenderedRefresh || currentMode == .rendered {
             refreshRenderedView()
             pendingRenderedRefresh = false
@@ -292,7 +338,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == Self.debugMessageName {
-            debugLog("jsDebug", details: String(describing: message.body))
             return
         }
 
@@ -301,7 +346,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         }
 
         if isApplyingHTMLToWebView {
-            debugLog("bridgeIgnored", details: "reason=isApplyingHTMLToWebView body=\(String(describing: message.body))")
             return
         }
 
@@ -314,18 +358,15 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
                 trusted,
                 let markdownValue = payload["markdown"] as? String
             else {
-                debugLog("bridgeIgnored", details: "reason=payloadValidationFailed payload=\(String(describing: payload))")
                 return
             }
             markdown = markdownValue
         } else if let markdownValue = message.body as? String {
             markdown = markdownValue
         } else {
-            debugLog("bridgeIgnored", details: "reason=unsupportedBody body=\(String(describing: message.body))")
             return
         }
 
-        debugLog("bridgeAccepted", details: "incomingLen=\(markdown.count) mode=\(currentMode.rawValue)")
         sourceText = markdown
         hasUnsavedChanges = true
 
@@ -333,7 +374,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
             isUpdatingSourceProgrammatically = true
             sourceTextView.string = markdown
             isUpdatingSourceProgrammatically = false
-            debugLog("bridgeAppliedToSourceView", details: "sourceViewLen=\(sourceTextView.string.count)")
         }
     }
 
@@ -349,17 +389,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
             return
         }
 
-        debugLog(
-            "setModeBegin",
-            details: "from=\(currentMode.rawValue) to=\(mode.rawValue) sourceTextLen=\(sourceText.count) sourceViewLen=\(sourceTextView.string.count)"
-        )
-
         if mode == .rendered {
             let latestSource = sourceTextView.string
             if sourceText.isEmpty || !latestSource.isEmpty {
                 sourceText = latestSource
             }
-            debugLog("setModePrepareRendered", details: "latestSourceLen=\(latestSource.count) mergedSourceLen=\(sourceText.count)")
         }
 
         currentMode = mode
@@ -380,19 +414,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
             sourceTextView.string = sourceText
             isUpdatingSourceProgrammatically = false
             view.window?.makeFirstResponder(sourceTextView)
-            debugLog("setModeSourceApplied", details: "sourceViewLen=\(sourceTextView.string.count)")
         }
-
-        debugLog(
-            "setModeEnd",
-            details: "mode=\(currentMode.rawValue) sourceTextLen=\(sourceText.count) sourceViewLen=\(sourceTextView.string.count)"
-        )
     }
 
     private func configureSourceEditor() {
         sourceTextView.isEditable = true
         sourceTextView.isSelectable = true
         sourceTextView.isRichText = false
+        sourceTextView.allowsUndo = true
         sourceTextView.usesFindBar = true
         sourceTextView.usesFontPanel = false
         sourceTextView.isAutomaticQuoteSubstitutionEnabled = false
@@ -421,16 +450,75 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         webView.setValue(false, forKey: "drawsBackground")
     }
 
+    private func performSearch(query: String, backwards: Bool) {
+        if currentMode == .rendered {
+            performRenderedSearch(query: query, backwards: backwards)
+        } else {
+            _ = performSourceSearch(query: query, backwards: backwards)
+        }
+    }
+
+    private func performRenderedSearch(query: String, backwards: Bool) {
+        guard isWebEditorReady else {
+            return
+        }
+
+        let configuration = WKFindConfiguration()
+        configuration.backwards = backwards
+        configuration.caseSensitive = false
+        configuration.wraps = true
+
+        webView.find(query, configuration: configuration) { [weak self] result in
+            
+        }
+    }
+
+    @discardableResult
+    private func performSourceSearch(query: String, backwards: Bool) -> Bool {
+        let text = sourceTextView.string as NSString
+        guard text.length > 0 else {
+            return false
+        }
+
+        let selection = sourceTextView.selectedRange()
+        let selectionStart = min(max(selection.location, 0), text.length)
+        let selectionEnd = min(selectionStart + selection.length, text.length)
+
+        let options: NSString.CompareOptions = backwards ? [.caseInsensitive, .backwards] : [.caseInsensitive]
+        let primaryRange: NSRange
+        let wrappedRange: NSRange
+
+        if backwards {
+            primaryRange = NSRange(location: 0, length: selectionStart)
+            wrappedRange = NSRange(location: selectionEnd, length: text.length - selectionEnd)
+        } else {
+            primaryRange = NSRange(location: selectionEnd, length: text.length - selectionEnd)
+            wrappedRange = NSRange(location: 0, length: selectionEnd)
+        }
+
+        var match = text.range(of: query, options: options, range: primaryRange)
+        if match.location == NSNotFound {
+            match = text.range(of: query, options: options, range: wrappedRange)
+        }
+
+        guard match.location != NSNotFound else {
+            return false
+        }
+
+        sourceTextView.setSelectedRange(match)
+        sourceTextView.scrollRangeToVisible(match)
+        view.window?.makeFirstResponder(sourceTextView)
+        return true
+    }
+
     private func loadRenderedEditorShell() {
         isWebEditorReady = false
-        debugLog("loadRenderedEditorShell", details: "requested")
-        webView.loadHTMLString(Self.renderedEditorShellHTML, baseURL: Bundle.main.resourceURL)
+        webView.loadHTMLString(RenderedEditorShellHTML.standard, baseURL: Bundle.main.resourceURL)
     }
 
     private func refreshRenderedView() {
         guard isWebEditorReady else {
             pendingRenderedRefresh = true
-            debugLog("refreshDeferred", details: "sourceLen=\(sourceText.count)")
             loadRenderedEditorShell()
             return
         }
@@ -448,30 +536,26 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
               console.error('setRenderedHTML failed', error);
             }
           }
-
+        
           const editor = document.getElementById('editor');
           if (editor) {
             editor.innerHTML = renderedHTML;
             return 'fallbackInnerHTML';
           }
-
+        
           throw new Error('rendered editor element not found');
         })()
         """
-        debugLog("refreshBegin", details: "sourceLen=\(sourceText.count) htmlLen=\(html.count)")
 
         isApplyingHTMLToWebView = true
         webView.evaluateJavaScript(command) { [weak self] result, error in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 self?.isApplyingHTMLToWebView = false
-                self?.debugLog("refreshApplyFlagCleared", details: "sourceLen=\(self?.sourceText.count ?? -1)")
             }
             if let error {
                 NSLog("Failed to apply rendered HTML: %@", error.localizedDescription)
-                self?.debugLog("refreshError", details: error.localizedDescription)
             } else {
                 let renderedPath = (result as? String) ?? "unknown"
-                self?.debugLog("refreshEvaluateCompleted", details: "ok path=\(renderedPath)")
             }
         }
     }
@@ -481,7 +565,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         didFail navigation: WKNavigation!,
         withError error: any Error
     ) {
-        debugLog("webViewDidFail", details: error.localizedDescription)
     }
 
     func webView(
@@ -489,11 +572,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         didFailProvisionalNavigation navigation: WKNavigation!,
         withError error: any Error
     ) {
-        debugLog("webViewDidFailProvisional", details: error.localizedDescription)
-    }
-
-    private func debugLog(_ event: String, details: String) {
-        logger.log("[\(event, privacy: .public)] \(details, privacy: .public)")
+        return
     }
 
     private func updateWindowPresentation() {
@@ -592,345 +671,4 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, WKNaviga
         return String(jsonArray.dropFirst().dropLast())
     }
 
-    private static let renderedEditorShellHTML = """
-<!doctype html>
-<html>
-<head>
-  <meta charset=\"utf-8\">
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-  <link rel=\"stylesheet\" href=\"RendererPrettyLights.css\">
-  <style>
-    :root {
-      color-scheme: light dark;
-      --bg: #ffffff;
-      --text: #1f2328;
-      --muted: #656d76;
-      --border: #d0d7de;
-      --code-bg: #f6f8fa;
-      --blockquote: #d0d7de;
-      --link: #0969da;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0d1117;
-        --text: #e6edf3;
-        --muted: #8b949e;
-        --border: #30363d;
-        --code-bg: #161b22;
-        --blockquote: #3d444d;
-        --link: #4493f8;
-      }
-    }
-
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: transparent;
-      color: var(--text);
-      height: 100%;
-      font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Helvetica, Arial, sans-serif;
-      font-size: 15px;
-      line-height: 1.55;
-    }
-
-    #editor {
-      box-sizing: border-box;
-      min-height: 100%;
-      width: 100%;
-      padding: 20px 28px;
-      outline: none;
-      white-space: normal;
-      word-break: break-word;
-      caret-color: var(--text);
-      background: transparent;
-    }
-
-    #editor:empty::before {
-      content: \"Start writing Markdown…\";
-      color: var(--muted);
-      pointer-events: none;
-    }
-
-    h1, h2, h3, h4, h5, h6 {
-      margin: 1.2em 0 0.6em;
-      line-height: 1.25;
-    }
-
-    p, ul, ol, blockquote, pre, table {
-      margin: 0.8em 0;
-    }
-
-    code {
-      font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.9em;
-      background: var(--code-bg);
-      padding: 0.15em 0.3em;
-      border-radius: 6px;
-    }
-
-    pre {
-      background: var(--code-bg);
-      padding: 12px;
-      border-radius: 10px;
-      overflow-x: auto;
-      border: 1px solid var(--border);
-    }
-
-    pre code {
-      background: transparent;
-      padding: 0;
-      border-radius: 0;
-    }
-
-    blockquote {
-      border-left: 3px solid var(--blockquote);
-      margin-left: 0;
-      padding-left: 12px;
-      color: var(--muted);
-    }
-
-    a {
-      color: var(--link);
-      text-decoration: underline;
-    }
-
-    table {
-      border-collapse: collapse;
-      width: max-content;
-      max-width: 100%;
-      display: block;
-      overflow-x: auto;
-    }
-
-    th, td {
-      border: 1px solid var(--border);
-      padding: 6px 10px;
-    }
-  </style>
-</head>
-<body>
-  <article id=\"editor\" contenteditable=\"true\" spellcheck=\"false\"></article>
-  <script src=\"RendererHighlighter.js\"></script>
-
-  <script>
-    (() => {
-      const editor = document.getElementById('editor');
-      let suppressNative = false;
-
-      function postDebug(payload) {
-        try {
-          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.markdownDebug) {
-            window.webkit.messageHandlers.markdownDebug.postMessage(payload);
-          }
-        } catch (_) {
-          // Best-effort debug logging only.
-        }
-      }
-
-      function escapeText(text) {
-        return text
-          .replace(/\\\\/g, '\\\\\\\\')
-          .replace(/([`*_{}[\\]()#+\\-.!|>])/g, '\\\\$1');
-      }
-
-      async function highlightCodeBlocks() {
-        if (!window.MarkdownStarryNight || typeof window.MarkdownStarryNight.highlightCodeBlocks !== 'function') {
-          postDebug({
-            event: 'highlight.skip',
-            reason: 'highlighterUnavailable'
-          });
-          return;
-        }
-
-        try {
-          await window.MarkdownStarryNight.highlightCodeBlocks(editor);
-          postDebug({
-            event: 'highlight.done'
-          });
-        } catch (error) {
-          postDebug({
-            event: 'highlight.error',
-            message: String(error)
-          });
-        }
-      }
-
-      function inlineMarkdown(node) {
-        if (node.nodeType === Node.TEXT_NODE) {
-          return escapeText(node.textContent || '');
-        }
-
-        if (node.nodeType !== Node.ELEMENT_NODE) {
-          return '';
-        }
-
-        const tag = node.tagName.toLowerCase();
-        const children = Array.from(node.childNodes).map(inlineMarkdown).join('');
-
-        if (tag === 'strong' || tag === 'b') return `**${children}**`;
-        if (tag === 'em' || tag === 'i') return `*${children}*`;
-        if (tag === 'del' || tag === 's') return `~~${children}~~`;
-        if (tag === 'code') return `\\`${node.textContent || ''}\\``;
-        if (tag === 'a') {
-          const href = node.getAttribute('href') || '';
-          return `[${children}](${href})`;
-        }
-        if (tag === 'img') {
-          const src = node.getAttribute('src') || '';
-          const alt = node.getAttribute('alt') || '';
-          return `![${escapeText(alt)}](${src})`;
-        }
-        if (tag === 'br') return '  \\n';
-
-        return children;
-      }
-
-      function blockMarkdown(node) {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const text = (node.textContent || '').trim();
-          return text ? `${escapeText(text)}\\n\\n` : '';
-        }
-
-        if (node.nodeType !== Node.ELEMENT_NODE) {
-          return '';
-        }
-
-        const tag = node.tagName.toLowerCase();
-
-        if (tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4' || tag === 'h5' || tag === 'h6') {
-          const level = Number(tag[1]);
-          const content = Array.from(node.childNodes).map(inlineMarkdown).join('').trim();
-          return `${'#'.repeat(level)} ${content}\\n\\n`;
-        }
-
-        if (tag === 'p') {
-          const content = Array.from(node.childNodes).map(inlineMarkdown).join('').trim();
-          return content ? `${content}\\n\\n` : '';
-        }
-
-        if (tag === 'blockquote') {
-          const inner = Array.from(node.childNodes).map(blockMarkdown).join('').trim();
-          const prefixed = inner.split('\\n').map(line => line ? `> ${line}` : '>').join('\\n');
-          return `${prefixed}\\n\\n`;
-        }
-
-        if (tag === 'pre') {
-          const code = node.querySelector('code');
-          let language = '';
-          if (code && code.className.startsWith('language-')) {
-            language = code.className.replace('language-', '');
-          }
-          const body = (code ? code.textContent : node.textContent) || '';
-          return `\\`\\`\\`${language}\\n${body.replace(/\\n+$/, '')}\\n\\`\\`\\`\\n\\n`;
-        }
-
-        if (tag === 'ul' || tag === 'ol') {
-          const listItems = Array.from(node.children).filter(child => child.tagName && child.tagName.toLowerCase() === 'li');
-          const rendered = listItems.map((item, index) => {
-            let prefix = tag === 'ol' ? `${index + 1}. ` : '- ';
-
-            const checkbox = item.querySelector(':scope > input[type="checkbox"]');
-            if (checkbox) {
-              prefix = `- [${checkbox.checked ? 'x' : ' '}] `;
-            }
-
-            const childContent = Array.from(item.childNodes)
-              .filter(child => !(child.tagName && child.tagName.toLowerCase() === 'input'))
-              .map(child => {
-                if (child.nodeType === Node.ELEMENT_NODE) {
-                  const childTag = child.tagName.toLowerCase();
-                  if (childTag === 'ul' || childTag === 'ol') {
-                    const nested = blockMarkdown(child).trimEnd().split('\\n').map(line => line ? `  ${line}` : '').join('\\n');
-                    return `\\n${nested}`;
-                  }
-                }
-                return inlineMarkdown(child);
-              })
-              .join('')
-              .trim();
-
-            return `${prefix}${childContent}`;
-          }).join('\\n');
-
-          return `${rendered}\\n\\n`;
-        }
-
-        if (tag === 'hr') {
-          return `---\\n\\n`;
-        }
-
-        if (tag === 'table') {
-          const rows = Array.from(node.querySelectorAll('tr')).map(tr => {
-            const cells = Array.from(tr.children).map(cell => (cell.textContent || '').trim().replace(/\\|/g, '\\\\|'));
-            return `| ${cells.join(' | ')} |`;
-          });
-
-          if (rows.length > 0) {
-            const headerCells = Array.from(node.querySelectorAll('tr:first-child th, tr:first-child td')).length;
-            if (headerCells > 0) {
-              const separator = `| ${Array.from({ length: headerCells }).map(() => '---').join(' | ')} |`;
-              rows.splice(1, 0, separator);
-            }
-          }
-
-          return rows.length ? `${rows.join('\\n')}\\n\\n` : '';
-        }
-
-        return Array.from(node.childNodes).map(blockMarkdown).join('');
-      }
-
-      function postMarkdown(event) {
-        if (suppressNative) return;
-        if (event && event.isComposing) return;
-
-        const markdown = blockMarkdown(editor).replace(/\\s+$/, '') + '\\n';
-        postDebug({
-          event: 'postMarkdown',
-          trusted: event ? !!event.isTrusted : false,
-          markdownLen: markdown.length
-        });
-        window.webkit.messageHandlers.markdownChanged.postMessage({
-          markdown,
-          reason: 'input',
-          trusted: event ? !!event.isTrusted : false
-        });
-      }
-
-      editor.addEventListener('input', (event) => postMarkdown(event));
-
-      window.getMarkdown = () => blockMarkdown(editor).replace(/\\s+$/, '') + '\\n';
-
-      window.setRenderedHTML = (html) => {
-        const safeHTML = typeof html === 'string' ? html : '';
-        postDebug({
-          event: 'setRenderedHTML.begin',
-          htmlLen: safeHTML.length
-        });
-        suppressNative = true;
-        try {
-          editor.innerHTML = safeHTML;
-          highlightCodeBlocks();
-        } catch (error) {
-          postDebug({
-            event: 'setRenderedHTML.error',
-            message: String(error)
-          });
-          editor.innerHTML = safeHTML;
-        }
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            suppressNative = false;
-            postDebug({
-              event: 'setRenderedHTML.end',
-              textLen: (editor.textContent || '').length
-            });
-          });
-        });
-      };
-    })();
-  </script>
-</body>
-</html>
-"""
 }

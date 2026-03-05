@@ -1,7 +1,15 @@
+//
+//  MainWindowController.swift
+//  Markdown
+//
+//  Created by Lucas on 4/3/26.
+//
+
 import AppKit
 
 final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
     private enum ToolbarItemID {
+        static let search = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.search")
         static let mode = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.mode")
     }
 
@@ -39,11 +47,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, ToolbarItemID.mode]
+        [.flexibleSpace, ToolbarItemID.search, ToolbarItemID.mode]
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, ToolbarItemID.mode]
+        [.flexibleSpace, ToolbarItemID.search, ToolbarItemID.mode]
     }
 
     func toolbar(
@@ -51,18 +59,36 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
-        guard itemIdentifier == ToolbarItemID.mode else {
+        switch itemIdentifier {
+        case ToolbarItemID.search:
+            let item = NSSearchToolbarItem(itemIdentifier: ToolbarItemID.search)
+            item.label = "Search"
+            item.paletteLabel = "Search"
+            item.preferredWidthForSearchField = 220
+            item.resignsFirstResponderWithCancel = true
+
+            let searchField = item.searchField
+            searchField.placeholderString = "Find"
+            searchField.sendsSearchStringImmediately = true
+            searchField.sendsWholeSearchString = true
+            searchField.delegate = editorViewController
+            searchField.target = editorViewController
+            searchField.action = #selector(EditorViewController.toolbarSearchChanged(_:))
+
+            editorViewController.attachToolbarSearchItem(item)
+            return item
+        case ToolbarItemID.mode:
+            let item = NSToolbarItem(itemIdentifier: ToolbarItemID.mode)
+            let control = editorViewController.toolbarModeControl
+
+            item.label = "Mode"
+            item.paletteLabel = "Mode"
+            item.view = control
+
+            return item
+        default:
             return nil
         }
-
-        let item = NSToolbarItem(itemIdentifier: ToolbarItemID.mode)
-        let control = editorViewController.toolbarModeControl
-
-        item.label = "Mode"
-        item.paletteLabel = "Mode"
-        item.view = control
-
-        return item
     }
 
     private func makeToolbar() -> NSToolbar {

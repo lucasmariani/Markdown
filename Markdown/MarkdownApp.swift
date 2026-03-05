@@ -1,3 +1,10 @@
+//
+//  AppDelegate.swift
+//  Markdown
+//
+//  Created by Lucas on 4/3/26.
+//
+
 import AppKit
 
 @MainActor
@@ -61,11 +68,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenuItem.submenu = editMenu
 
         let undoItem = editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-        undoItem.target = nil
+        undoItem.keyEquivalentModifierMask = [.command]
 
         let redoItem = editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
         redoItem.keyEquivalentModifierMask = [.command, .shift]
-        redoItem.target = nil
 
         editMenu.addItem(NSMenuItem.separator())
 
@@ -82,6 +88,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let selectAllItem = editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         selectAllItem.target = nil
+
+        editMenu.addItem(NSMenuItem.separator())
+
+        let findItem = editMenu.addItem(withTitle: "Find…", action: #selector(EditorViewController.focusSearch(_:)), keyEquivalent: "f")
+        findItem.keyEquivalentModifierMask = [.command]
 
         let viewMenuItem = NSMenuItem()
         mainMenu.addItem(viewMenuItem)
@@ -106,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             #selector(EditorViewController.saveDocumentAs(_:)),
             #selector(EditorViewController.showRendered(_:)),
             #selector(EditorViewController.showSource(_:)),
+            #selector(EditorViewController.focusSearch(_:)),
         ]
 
         for item in mainMenu.allItemsRecursively where item.action != #selector(NSApplication.terminate(_:)) {

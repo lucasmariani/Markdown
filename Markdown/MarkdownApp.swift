@@ -9,6 +9,7 @@ import AppKit
 
 @main
 struct MarkdownApp {
+
     private static let appDelegate = AppDelegate()
 
     @MainActor

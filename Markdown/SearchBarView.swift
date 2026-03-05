@@ -1,5 +1,5 @@
 //
-//  FindBarView.swift
+//  SearchBarView.swift
 //  Markdown
 //
 //  Created by Codex on 04/03/26.
@@ -7,7 +7,7 @@
 
 import AppKit
 
-final class FindBarView: NSVisualEffectView, NSSearchFieldDelegate {
+final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
     var onQueryChanged: ((String) -> Void)?
     var onFindRequested: ((Bool) -> Void)?
     var onDoneRequested: (() -> Void)?

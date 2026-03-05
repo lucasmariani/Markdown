@@ -24,11 +24,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldSaveApplicationState(_ app: NSApplication) -> Bool {
-        false
+        true
     }
 
     func applicationShouldRestoreApplicationState(_ app: NSApplication) -> Bool {
-        false
+        true
+    }
+
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        true
     }
 
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {

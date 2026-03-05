@@ -13,8 +13,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         case source = 0
     }
 
-    private let renderedContainerView = NSView(frame: .zero)
-    private let findBarView = FindBarView()
+    private let searchBarView = SearchBarView()
 
     private var findBarHeightConstraint: NSLayoutConstraint?
 
@@ -27,7 +26,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     }()
 
     private lazy var renderedController: RenderedEditorController = {
-        let controller = RenderedEditorController(containerView: renderedContainerView)
+        let controller = RenderedEditorController()
         controller.onMarkdownInput = { [weak self] markdown in
             self?.handleRenderedMarkdownInput(markdown)
         }
@@ -35,7 +34,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     }()
 
     private lazy var findCoordinator: FindCoordinator = {
-        let coordinator = FindCoordinator(findBarView: findBarView)
+        let coordinator = FindCoordinator(findBarView: searchBarView)
         coordinator.onSearchRequested = { [weak self] query, backwards in
             self?.performSearch(query: query, backwards: backwards)
         }
@@ -68,11 +67,10 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     }
 
     override func loadView() {
-        let rootView = NSVisualEffectView()
-        rootView.material = .windowBackground
-        rootView.blendingMode = .behindWindow
-        rootView.state = .active
-        rootView.translatesAutoresizingMaskIntoConstraints = false
+//        let rootView = NSVisualEffectView()
+//        rootView.material = .underWindowBackground
+//        rootView.state = .active
+//        rootView.translatesAutoresizingMaskIntoConstraints = false
 
         let contentContainer = NSView()
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -85,22 +83,22 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
 
         _ = findCoordinator
 
-        contentContainer.addSubview(findBarView)
+        contentContainer.addSubview(searchBarView)
         contentContainer.addSubview(contentSurface)
         contentSurface.addSubview(sourceController.scrollView)
-        contentSurface.addSubview(renderedContainerView)
+        contentSurface.addSubview(renderedController.scrollView)
 
         sourceController.scrollView.translatesAutoresizingMaskIntoConstraints = false
-        renderedContainerView.translatesAutoresizingMaskIntoConstraints = false
+        renderedController.scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
-            findBarView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
-            findBarView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
-            findBarView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
+            searchBarView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
+            searchBarView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
+            searchBarView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
 
             contentSurface.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
             contentSurface.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
-            contentSurface.topAnchor.constraint(equalTo: findBarView.bottomAnchor),
+            contentSurface.topAnchor.constraint(equalTo: searchBarView.bottomAnchor),
             contentSurface.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
 
             sourceController.scrollView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
@@ -108,29 +106,20 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
             sourceController.scrollView.topAnchor.constraint(equalTo: contentSurface.topAnchor),
             sourceController.scrollView.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor),
 
-            renderedContainerView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
-            renderedContainerView.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor),
-            renderedContainerView.topAnchor.constraint(equalTo: contentSurface.topAnchor),
-            renderedContainerView.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor),
+            renderedController.scrollView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
+            renderedController.scrollView.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor),
+            renderedController.scrollView.topAnchor.constraint(equalTo: contentSurface.topAnchor),
+            renderedController.scrollView.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor),
         ])
 
-        let findBarHeight = findBarView.heightAnchor.constraint(equalToConstant: 0)
+        let findBarHeight = searchBarView.heightAnchor.constraint(equalToConstant: 0)
         findBarHeight.isActive = true
         findBarHeightConstraint = findBarHeight
 
-        rootView.addSubview(contentContainer)
-        let cornerAdaptiveGuide = rootView.layoutGuide(for: .safeArea(cornerAdaptation: .horizontal))
-
-        NSLayoutConstraint.activate([
-            contentContainer.leadingAnchor.constraint(equalTo: cornerAdaptiveGuide.leadingAnchor),
-            contentContainer.trailingAnchor.constraint(equalTo: cornerAdaptiveGuide.trailingAnchor),
-            contentContainer.topAnchor.constraint(equalTo: cornerAdaptiveGuide.topAnchor),
-            contentContainer.bottomAnchor.constraint(equalTo: cornerAdaptiveGuide.bottomAnchor),
-        ])
-
-        self.view = rootView
+//        rootView.addSubview(contentContainer)
+        self.view = contentContainer
         sourceController.scrollView.isHidden = false
-        renderedContainerView.isHidden = true
+        renderedController.scrollView.isHidden = true
     }
 
     override func viewDidLoad() {
@@ -184,7 +173,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
 
         currentMode = mode
         sourceController.scrollView.isHidden = (mode == .rendered)
-        renderedContainerView.isHidden = (mode == .source)
+        renderedController.scrollView.isHidden = (mode == .source)
         onModeChanged?(mode == .rendered)
 
         if mode == .rendered {
@@ -196,7 +185,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func showFindBar() {
-        findBarView.isHidden = false
+        searchBarView.isHidden = false
         findBarHeightConstraint?.constant = 40
         view.layoutSubtreeIfNeeded()
     }
@@ -210,7 +199,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
 
         findBarHeightConstraint?.constant = 0
         view.layoutSubtreeIfNeeded()
-        findBarView.isHidden = true
+        searchBarView.isHidden = true
     }
 
     private func performSearch(query: String, backwards: Bool) {

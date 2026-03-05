@@ -8,13 +8,13 @@
 import AppKit
 
 final class FindCoordinator {
-    private let findBarView: FindBarView
+    private let findBarView: SearchBarView
     private(set) var activeQuery = ""
 
     var onSearchRequested: ((String, Bool) -> Void)?
     var onDoneRequested: (() -> Void)?
 
-    init(findBarView: FindBarView) {
+    init(findBarView: SearchBarView) {
         self.findBarView = findBarView
         configureCallbacks()
     }

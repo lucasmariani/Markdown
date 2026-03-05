@@ -8,14 +8,30 @@
 import AppKit
 import WebKit
 
+private final class RenderedWebView: WKWebView {
+    override func scrollWheel(with event: NSEvent) {
+        if let scrollView = enclosingScrollView {
+            scrollView.scrollWheel(with: event)
+        } else {
+            super.scrollWheel(with: event)
+        }
+    }
+}
+
+private final class FlippedDocumentView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     private enum Message {
         static let markdownChanged = "markdownChanged"
         static let markdownDebug = "markdownDebug"
     }
 
-    private let containerView: NSView
+    let scrollView = NSScrollView(frame: .zero)
+    private let documentContainerView = FlippedDocumentView(frame: .zero)
     private var webView: WKWebView?
+    private var pendingHeightRefreshWorkItem: DispatchWorkItem?
 
     private var latestMarkdown = ""
     private var isReady = false
@@ -24,12 +40,14 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
 
     var onMarkdownInput: ((String) -> Void)?
 
-    init(containerView: NSView) {
-        self.containerView = containerView
+    override init() {
         super.init()
+        configureScrollView()
     }
 
     deinit {
+        NotificationCenter.default.removeObserver(self)
+        pendingHeightRefreshWorkItem?.cancel()
         if let userContentController = webView?.configuration.userContentController {
             userContentController.removeScriptMessageHandler(forName: Message.markdownChanged)
             userContentController.removeScriptMessageHandler(forName: Message.markdownDebug)
@@ -49,18 +67,14 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = userContentController
 
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = RenderedWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
-        webView.translatesAutoresizingMaskIntoConstraints = false
+        webView.autoresizingMask = [.width, .height]
         webView.setValue(false, forKey: "drawsBackground")
+        webView.frame = documentContainerView.bounds
 
-        containerView.addSubview(webView)
-        NSLayoutConstraint.activate([
-            webView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
-        ])
+        documentContainerView.addSubview(webView)
+        layoutDocumentContainer(minimumHeight: max(scrollView.contentView.bounds.height, 1))
 
         self.webView = webView
         loadShell()
@@ -113,6 +127,8 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
             if let error {
                 NSLog("Failed to apply rendered HTML: %@", error.localizedDescription)
             }
+
+            self?.scheduleHeightRefresh(after: 0.25)
         }
     }
 
@@ -137,6 +153,7 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         isReady = true
+        scheduleHeightRefresh()
         if pendingRefresh {
             pendingRefresh = false
             render(markdown: latestMarkdown)
@@ -183,6 +200,7 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
         }
 
         isReady = false
+        layoutDocumentContainer(minimumHeight: max(scrollView.contentView.bounds.height, 1))
         webView.loadHTMLString(RenderedEditorShellHTML.standard, baseURL: Bundle.main.resourceURL)
     }
 
@@ -195,5 +213,96 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
         }
 
         return String(jsonArray.dropFirst().dropLast())
+    }
+
+    private func configureScrollView() {
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.borderType = .noBorder
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+        scrollView.scrollerStyle = .overlay
+        scrollView.automaticallyAdjustsContentInsets = true
+        scrollView.contentView.postsBoundsChangedNotifications = true
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(contentViewBoundsDidChange),
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
+
+        scrollView.documentView = documentContainerView
+    }
+
+    @objc
+    private func contentViewBoundsDidChange(_ notification: Notification) {
+        layoutDocumentContainer(minimumHeight: documentContainerView.frame.height)
+        scheduleHeightRefresh()
+    }
+
+    private func scheduleHeightRefresh(after delay: TimeInterval = 0.05) {
+        pendingHeightRefreshWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.refreshDocumentHeight()
+        }
+        pendingHeightRefreshWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func refreshDocumentHeight() {
+        guard isReady, let webView else {
+            return
+        }
+
+        let script = """
+        (() => {
+          const editor = document.getElementById('editor');
+          const body = document.body;
+          const doc = document.documentElement;
+          return Math.max(
+            editor ? editor.scrollHeight : 0,
+            editor ? editor.offsetHeight : 0,
+            editor ? Math.ceil(editor.getBoundingClientRect().height) : 0,
+            body ? body.scrollHeight : 0,
+            body ? body.offsetHeight : 0,
+            body ? body.clientHeight : 0,
+            doc ? doc.scrollHeight : 0,
+            doc ? doc.offsetHeight : 0,
+            doc ? doc.clientHeight : 0
+          );
+        })()
+        """
+
+        webView.evaluateJavaScript(script) { [weak self] result, error in
+            guard let self else {
+                return
+            }
+
+            if let error {
+                NSLog("Failed to measure rendered content height: %@", error.localizedDescription)
+                return
+            }
+
+            guard let value = result as? NSNumber else {
+                return
+            }
+
+            let height = CGFloat(truncating: value)
+            self.layoutDocumentContainer(minimumHeight: height)
+        }
+    }
+
+    private func layoutDocumentContainer(minimumHeight: CGFloat) {
+        let width = max(scrollView.contentView.bounds.width, 1)
+        let height = max(minimumHeight, scrollView.contentView.bounds.height, 1)
+        let frame = NSRect(x: 0, y: 0, width: width, height: height)
+
+        if documentContainerView.frame != frame {
+            documentContainerView.frame = frame
+        }
+
+        webView?.frame = documentContainerView.bounds
     }
 }

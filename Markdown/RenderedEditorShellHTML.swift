@@ -46,6 +46,7 @@ enum RenderedEditorShellHTML {
       background: transparent;
       color: var(--text);
       height: 100%;
+      overflow: hidden;
       font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Helvetica, Arial, sans-serif;
       font-size: 15px;
       line-height: 1.55;

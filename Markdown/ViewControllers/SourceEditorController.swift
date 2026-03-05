@@ -110,6 +110,7 @@ final class SourceEditorController: NSObject, NSTextViewDelegate {
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
         scrollView.scrollerStyle = .overlay
+        scrollView.automaticallyAdjustsContentInsets = true
         scrollView.documentView = textView
     }
 }

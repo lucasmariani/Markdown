@@ -7,7 +7,7 @@
 
 import AppKit
 
-final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuItemValidation {
+final class EditorViewController: NSViewController, NSMenuItemValidation {
     private enum EditorMode: Int {
         case rendered = 1
         case source = 0
@@ -50,12 +50,18 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         return control
     }()
 
-    private let sourceScrollView = NSScrollView(frame: .zero)
-    private let sourceTextView = NSTextView(frame: .zero)
     private let renderedContainerView = NSView(frame: .zero)
     private let findBarView = FindBarView()
 
     private var findBarHeightConstraint: NSLayoutConstraint?
+
+    private lazy var sourceController: SourceEditorController = {
+        let controller = SourceEditorController()
+        controller.onTextChanged = { [weak self] text in
+            self?.handleSourceTextChanged(text)
+        }
+        return controller
+    }()
 
     private lazy var renderedController: RenderedEditorController = {
         let controller = RenderedEditorController(containerView: renderedContainerView)
@@ -70,7 +76,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
     private var currentMode: EditorMode = .source
     private var sourceText: String = ""
     private var activeSearchQuery = ""
-    private var isUpdatingSourceProgrammatically = false
 
     var toolbarModeControl: NSSegmentedControl {
         modeControl
@@ -78,10 +83,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
 
     func setDocumentText(_ text: String) {
         sourceText = text
-
-        isUpdatingSourceProgrammatically = true
-        sourceTextView.string = text
-        isUpdatingSourceProgrammatically = false
+        sourceController.setText(text)
 
         if currentMode == .rendered {
             renderedController.render(markdown: sourceText)
@@ -90,7 +92,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
 
     func documentTextSnapshot() -> String {
         if currentMode == .source {
-            sourceText = sourceTextView.string
+            sourceText = sourceController.currentText()
         }
         return sourceText
     }
@@ -112,14 +114,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         contentSurface.translatesAutoresizingMaskIntoConstraints = false
 
         configureFindBar()
-        configureSourceEditor()
 
         contentContainer.addSubview(findBarView)
         contentContainer.addSubview(contentSurface)
-        contentSurface.addSubview(sourceScrollView)
+        contentSurface.addSubview(sourceController.scrollView)
         contentSurface.addSubview(renderedContainerView)
 
-        sourceScrollView.translatesAutoresizingMaskIntoConstraints = false
+        sourceController.scrollView.translatesAutoresizingMaskIntoConstraints = false
         renderedContainerView.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
@@ -132,10 +133,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
             contentSurface.topAnchor.constraint(equalTo: findBarView.bottomAnchor),
             contentSurface.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
 
-            sourceScrollView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
-            sourceScrollView.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor),
-            sourceScrollView.topAnchor.constraint(equalTo: contentSurface.topAnchor),
-            sourceScrollView.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor),
+            sourceController.scrollView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
+            sourceController.scrollView.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor),
+            sourceController.scrollView.topAnchor.constraint(equalTo: contentSurface.topAnchor),
+            sourceController.scrollView.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor),
 
             renderedContainerView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
             renderedContainerView.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor),
@@ -158,13 +159,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         ])
 
         self.view = rootView
-        sourceScrollView.isHidden = false
+        sourceController.scrollView.isHidden = false
         renderedContainerView.isHidden = true
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        sourceTextView.string = sourceText
+        sourceController.setText(sourceText)
     }
 
     @objc func showRendered(_ sender: Any?) {
@@ -193,15 +194,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         }
     }
 
-    func textDidChange(_ notification: Notification) {
-        guard !isUpdatingSourceProgrammatically else {
-            return
-        }
-
-        sourceText = sourceTextView.string
-        onDocumentTextDidChange?(sourceText)
-    }
-
     @objc private func modeControlChanged(_ sender: NSSegmentedControl) {
         guard let mode = EditorMode(rawValue: sender.selectedSegment) else {
             return
@@ -215,7 +207,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         }
 
         if mode == .rendered {
-            let latestSource = sourceTextView.string
+            let latestSource = sourceController.currentText()
             if sourceText.isEmpty || !latestSource.isEmpty {
                 sourceText = latestSource
             }
@@ -227,49 +219,16 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         }
 
         currentMode = mode
-        sourceScrollView.isHidden = (mode == .rendered)
+        sourceController.scrollView.isHidden = (mode == .rendered)
         renderedContainerView.isHidden = (mode == .source)
         modeControl.selectedSegment = mode.rawValue
 
         if mode == .rendered {
             renderedController.render(markdown: sourceText)
         } else {
-            isUpdatingSourceProgrammatically = true
-            sourceTextView.string = sourceText
-            isUpdatingSourceProgrammatically = false
-            view.window?.makeFirstResponder(sourceTextView)
+            sourceController.setText(sourceText)
+            sourceController.focus(in: view.window)
         }
-    }
-
-    private func configureSourceEditor() {
-        sourceTextView.isEditable = true
-        sourceTextView.isSelectable = true
-        sourceTextView.isRichText = false
-        sourceTextView.allowsUndo = true
-        sourceTextView.usesFindBar = false
-        sourceTextView.usesFontPanel = false
-        sourceTextView.isAutomaticQuoteSubstitutionEnabled = false
-        sourceTextView.isAutomaticDashSubstitutionEnabled = false
-        sourceTextView.isAutomaticTextReplacementEnabled = false
-        sourceTextView.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
-        sourceTextView.backgroundColor = .clear
-        sourceTextView.insertionPointColor = .labelColor
-        sourceTextView.textContainerInset = NSSize(width: 18, height: 16)
-        sourceTextView.delegate = self
-
-        sourceTextView.isVerticallyResizable = true
-        sourceTextView.isHorizontallyResizable = false
-        sourceTextView.autoresizingMask = [.width]
-        sourceTextView.textContainer?.widthTracksTextView = true
-        sourceTextView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
-
-        sourceScrollView.hasVerticalScroller = true
-        sourceScrollView.hasHorizontalScroller = false
-        sourceScrollView.borderType = .noBorder
-        sourceScrollView.autohidesScrollers = true
-        sourceScrollView.drawsBackground = false
-        sourceScrollView.scrollerStyle = .overlay
-        sourceScrollView.documentView = sourceTextView
     }
 
     private func configureFindBar() {
@@ -302,7 +261,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
 
     private func hideFindBar() {
         if currentMode == .source {
-            view.window?.makeFirstResponder(sourceTextView)
+            sourceController.focus(in: view.window)
         } else {
             renderedController.focus(in: view.window)
         }
@@ -326,45 +285,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         if currentMode == .rendered {
             renderedController.find(query: query, backwards: backwards)
         } else {
-            _ = performSourceSearch(query: query, backwards: backwards)
+            _ = sourceController.find(query: query, backwards: backwards)
         }
-    }
-
-    @discardableResult
-    private func performSourceSearch(query: String, backwards: Bool) -> Bool {
-        let text = sourceTextView.string as NSString
-        guard text.length > 0 else {
-            return false
-        }
-
-        let selection = sourceTextView.selectedRange()
-        let selectionStart = min(max(selection.location, 0), text.length)
-        let selectionEnd = min(selectionStart + selection.length, text.length)
-
-        let options: NSString.CompareOptions = backwards ? [.caseInsensitive, .backwards] : [.caseInsensitive]
-        let primaryRange: NSRange
-        let wrappedRange: NSRange
-
-        if backwards {
-            primaryRange = NSRange(location: 0, length: selectionStart)
-            wrappedRange = NSRange(location: selectionEnd, length: text.length - selectionEnd)
-        } else {
-            primaryRange = NSRange(location: selectionEnd, length: text.length - selectionEnd)
-            wrappedRange = NSRange(location: 0, length: selectionEnd)
-        }
-
-        var match = text.range(of: query, options: options, range: primaryRange)
-        if match.location == NSNotFound {
-            match = text.range(of: query, options: options, range: wrappedRange)
-        }
-
-        guard match.location != NSNotFound else {
-            return false
-        }
-
-        sourceTextView.setSelectedRange(match)
-        sourceTextView.scrollRangeToVisible(match)
-        return true
     }
 
     private func handleRenderedMarkdownInput(_ markdown: String) {
@@ -372,9 +294,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSMenuIt
         onDocumentTextDidChange?(sourceText)
 
         if currentMode == .source {
-            isUpdatingSourceProgrammatically = true
-            sourceTextView.string = markdown
-            isUpdatingSourceProgrammatically = false
+            sourceController.setText(markdown)
         }
+    }
+
+    private func handleSourceTextChanged(_ text: String) {
+        sourceText = text
+        onDocumentTextDidChange?(sourceText)
     }
 }

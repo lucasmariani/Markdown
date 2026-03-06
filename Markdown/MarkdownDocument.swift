@@ -14,12 +14,15 @@ final class MarkdownDocument: NSDocument {
     private static let unsavedSubtitle = "Unsaved Markdown Document"
 
     private let textStorage = Mutex("")
+    private let securityScopedURLStorage = Mutex<URL?>(nil)
     private weak var editorViewController: EditorViewController?
+    private var hasPresentedRecoveryArtifactAlert = false
 
     override var fileURL: URL? {
         didSet {
             MainActor.assumeIsolated {
                 updateWindowSubtitle()
+                presentRecoveryArtifactAlertIfNeeded()
             }
         }
     }
@@ -49,6 +52,7 @@ final class MarkdownDocument: NSDocument {
         editorViewController = editor
 
         updateWindowSubtitle()
+        presentRecoveryArtifactAlertIfNeeded()
         NSLog("[MarkdownDocument] makeWindowControllers end windowControllers=%ld", windowControllers.count)
     }
 
@@ -108,5 +112,111 @@ final class MarkdownDocument: NSDocument {
         textStorage.withLock { value in
             value = text
         }
+    }
+
+    nonisolated func beginSecurityScopedAccess(to url: URL) {
+        guard currentSecurityScopedURL()?.standardizedFileURL != url.standardizedFileURL else {
+            return
+        }
+
+        endSecurityScopedAccess()
+
+        guard url.startAccessingSecurityScopedResource() else {
+            return
+        }
+
+        securityScopedURLStorage.withLock { value in
+            value = url
+        }
+    }
+
+    nonisolated func adoptSecurityScopedURL(_ url: URL) {
+        guard currentSecurityScopedURL()?.standardizedFileURL != url.standardizedFileURL else {
+            return
+        }
+
+        endSecurityScopedAccess()
+        securityScopedURLStorage.withLock { value in
+            value = url
+        }
+    }
+
+    nonisolated private func currentSecurityScopedURL() -> URL? {
+        securityScopedURLStorage.withLock { $0 }
+    }
+
+    private func presentRecoveryArtifactAlertIfNeeded() {
+        guard !hasPresentedRecoveryArtifactAlert,
+              let fileURL,
+              let artifactURL = Self.recoveryArtifactURL(forDocumentAt: fileURL),
+              let window = windowControllers.first?.window else {
+            return
+        }
+
+        hasPresentedRecoveryArtifactAlert = true
+
+        let alert = NSAlert()
+        alert.messageText = "Interrupted Save File Found"
+        alert.informativeText = """
+        Markdown found a temporary save file left beside this document after an interrupted save. \
+        The original document opened normally. You can reveal the temporary file in Finder to inspect or remove it.
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Reveal in Finder")
+        alert.addButton(withTitle: "Ignore")
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertFirstButtonReturn else {
+                return
+            }
+
+            NSWorkspace.shared.activateFileViewerSelecting([artifactURL])
+        }
+    }
+
+    nonisolated static func recoveryArtifactURL(
+        forDocumentAt documentURL: URL,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        let documentName = documentURL.lastPathComponent
+        guard let siblingURLs = try? fileManager.contentsOfDirectory(
+            at: documentURL.deletingLastPathComponent(),
+            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        let artifactURLs = siblingURLs.filter { candidateURL in
+            guard candidateURL != documentURL else {
+                return false
+            }
+
+            let candidateName = candidateURL.lastPathComponent
+            return candidateName.hasPrefix("\(documentName).sb-")
+        }
+
+        return artifactURLs.max { lhs, rhs in
+            let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+            let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+            return lhsDate < rhsDate
+        }
+    }
+
+    nonisolated private func endSecurityScopedAccess() {
+        let url = securityScopedURLStorage.withLock { value -> URL? in
+            let currentURL = value
+            value = nil
+            return currentURL
+        }
+
+        guard let url else {
+            return
+        }
+
+        url.stopAccessingSecurityScopedResource()
+    }
+
+    deinit {
+        endSecurityScopedAccess()
     }
 }

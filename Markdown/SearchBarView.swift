@@ -10,7 +10,7 @@ import AppKit
 @MainActor
 final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
     var onQueryChanged: ((String) -> Void)?
-    var onFindRequested: ((Bool) -> Void)?
+    var onSearchRequested: ((Bool) -> Void)?
     var onDoneRequested: (() -> Void)?
 
     var query: String {
@@ -113,11 +113,11 @@ final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
     }
 
     @objc private func findNext(_ sender: Any?) {
-        onFindRequested?(false)
+        onSearchRequested?(false)
     }
 
     @objc private func findPrevious(_ sender: Any?) {
-        onFindRequested?(true)
+        onSearchRequested?(true)
     }
 
     @objc private func doneFinding(_ sender: Any?) {
@@ -132,7 +132,7 @@ final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
         if commandSelector == #selector(NSResponder.insertNewline(_:)) ||
             commandSelector == #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)) {
             let backwards = NSApp.currentEvent?.modifierFlags.contains(.shift) == true
-            onFindRequested?(backwards)
+            onSearchRequested?(backwards)
             return true
         }
 

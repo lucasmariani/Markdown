@@ -30,8 +30,8 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         RenderedEditorController()
     }()
 
-    private lazy var findCoordinator: FindCoordinator = {
-        let coordinator = FindCoordinator(findBarView: searchBarView)
+    private lazy var findCoordinator: SearchCoordinator = {
+        let coordinator = SearchCoordinator(searchBarView: searchBarView)
         coordinator.onSearchRequested = { [weak self] query, backwards in
             self?.performSearch(query: query, backwards: backwards)
         }

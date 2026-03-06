@@ -10,14 +10,30 @@
 		A01C16202F58DB1C00081EC9 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = A01C161F2F58DB1C00081EC9 /* Markdown */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		A01C162B2F59000000081EC9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A01C16082F58D7F200081EC9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A01C160F2F58D7F200081EC9;
+			remoteInfo = Markdown;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		A01C16102F58D7F200081EC9 /* Markdown.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Markdown.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A01C16212F59000000081EC9 /* MarkdownTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MarkdownTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A01C16122F58D7F200081EC9 /* Markdown */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Markdown;
+			sourceTree = "<group>";
+		};
+		A01C16222F59000000081EC9 /* MarkdownTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MarkdownTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -31,6 +47,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A01C16252F59000000081EC9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -38,6 +61,7 @@
 			isa = PBXGroup;
 			children = (
 				A01C16122F58D7F200081EC9 /* Markdown */,
+				A01C16222F59000000081EC9 /* MarkdownTests */,
 				A01C16112F58D7F200081EC9 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -46,6 +70,7 @@
 			isa = PBXGroup;
 			children = (
 				A01C16102F58D7F200081EC9 /* Markdown.app */,
+				A01C16212F59000000081EC9 /* MarkdownTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -76,6 +101,29 @@
 			productReference = A01C16102F58D7F200081EC9 /* Markdown.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A01C16232F59000000081EC9 /* MarkdownTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A01C16272F59000000081EC9 /* Build configuration list for PBXNativeTarget "MarkdownTests" */;
+			buildPhases = (
+				A01C16242F59000000081EC9 /* Sources */,
+				A01C16252F59000000081EC9 /* Frameworks */,
+				A01C16262F59000000081EC9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A01C162A2F59000000081EC9 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A01C16222F59000000081EC9 /* MarkdownTests */,
+			);
+			name = MarkdownTests;
+			packageProductDependencies = (
+			);
+			productName = MarkdownTests;
+			productReference = A01C16212F59000000081EC9 /* MarkdownTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -88,6 +136,10 @@
 				TargetAttributes = {
 					A01C160F2F58D7F200081EC9 = {
 						CreatedOnToolsVersion = 26.3;
+					};
+					A01C16232F59000000081EC9 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = A01C160F2F58D7F200081EC9;
 					};
 				};
 			};
@@ -109,12 +161,20 @@
 			projectRoot = "";
 			targets = (
 				A01C160F2F58D7F200081EC9 /* Markdown */,
+				A01C16232F59000000081EC9 /* MarkdownTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		A01C160E2F58D7F200081EC9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A01C16262F59000000081EC9 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -131,7 +191,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A01C16242F59000000081EC9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A01C162A2F59000000081EC9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A01C160F2F58D7F200081EC9 /* Markdown */;
+			targetProxy = A01C162B2F59000000081EC9 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A01C16192F58D7F200081EC9 /* Debug */ = {
@@ -286,10 +361,11 @@
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -325,10 +401,71 @@
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A01C16282F59000000081EC9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G23224SBC9;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = MarkdownTests;
+				INFOPLIST_KEY_NSPrincipalClass = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.MarkdownTests;
+				PRODUCT_MODULE_NAME = MarkdownTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Markdown.app/Contents/MacOS/Markdown";
+			};
+			name = Debug;
+		};
+		A01C16292F59000000081EC9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G23224SBC9;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = MarkdownTests;
+				INFOPLIST_KEY_NSPrincipalClass = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.MarkdownTests;
+				PRODUCT_MODULE_NAME = MarkdownTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Markdown.app/Contents/MacOS/Markdown";
 			};
 			name = Release;
 		};
@@ -349,6 +486,15 @@
 			buildConfigurations = (
 				A01C161C2F58D7F200081EC9 /* Debug */,
 				A01C161D2F58D7F200081EC9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A01C16272F59000000081EC9 /* Build configuration list for PBXNativeTarget "MarkdownTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A01C16282F59000000081EC9 /* Debug */,
+				A01C16292F59000000081EC9 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

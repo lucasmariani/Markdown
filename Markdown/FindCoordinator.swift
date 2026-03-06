@@ -7,11 +7,13 @@
 
 import AppKit
 
+@MainActor
 final class FindCoordinator {
     private let findBarView: SearchBarView
     private(set) var activeQuery = ""
 
     var onSearchRequested: ((String, Bool) -> Void)?
+    var onSearchCleared: (() -> Void)?
     var onDoneRequested: (() -> Void)?
 
     init(findBarView: SearchBarView) {
@@ -31,6 +33,7 @@ final class FindCoordinator {
 
             self.activeQuery = query
             guard !query.isEmpty else {
+                self.onSearchCleared?()
                 return
             }
 

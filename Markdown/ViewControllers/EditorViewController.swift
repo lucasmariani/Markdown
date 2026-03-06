@@ -7,6 +7,7 @@
 
 import AppKit
 
+@MainActor
 final class EditorViewController: NSViewController, NSMenuItemValidation {
     private enum EditorMode: Int {
         case rendered = 1
@@ -26,17 +27,16 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     }()
 
     private lazy var renderedController: RenderedEditorController = {
-        let controller = RenderedEditorController()
-        controller.onMarkdownInput = { [weak self] markdown in
-            self?.handleRenderedMarkdownInput(markdown)
-        }
-        return controller
+        RenderedEditorController()
     }()
 
     private lazy var findCoordinator: FindCoordinator = {
         let coordinator = FindCoordinator(findBarView: searchBarView)
         coordinator.onSearchRequested = { [weak self] query, backwards in
             self?.performSearch(query: query, backwards: backwards)
+        }
+        coordinator.onSearchCleared = { [weak self] in
+            self?.clearSearch()
         }
         coordinator.onDoneRequested = { [weak self] in
             self?.hideFindBar()
@@ -137,8 +137,33 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     }
 
     @objc func focusSearch(_ sender: Any?) {
+        guard currentMode == .rendered else {
+            sourceController.showFindInterface(in: view.window)
+            return
+        }
+
         showFindBar()
         findCoordinator.focusSearch()
+    }
+
+    @objc func findNext(_ sender: Any?) {
+        guard currentMode == .rendered else {
+            sourceController.performTextFinderAction(.nextMatch, in: view.window)
+            return
+        }
+
+        showFindBar()
+        performSearch(query: searchBarView.query, backwards: false)
+    }
+
+    @objc func findPrevious(_ sender: Any?) {
+        guard currentMode == .rendered else {
+            sourceController.performTextFinderAction(.previousMatch, in: view.window)
+            return
+        }
+
+        showFindBar()
+        performSearch(query: searchBarView.query, backwards: true)
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -178,6 +203,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
 
         if mode == .rendered {
             renderedController.render(markdown: sourceText)
+            renderedController.focus(in: view.window)
         } else {
             sourceController.setText(sourceText)
             sourceController.focus(in: view.window)
@@ -205,17 +231,12 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     private func performSearch(query: String, backwards: Bool) {
         if currentMode == .rendered {
             renderedController.find(query: query, backwards: backwards)
-        } else {
-            _ = sourceController.find(query: query, backwards: backwards)
         }
     }
 
-    private func handleRenderedMarkdownInput(_ markdown: String) {
-        sourceText = markdown
-        onDocumentTextDidChange?(sourceText)
-
-        if currentMode == .source {
-            sourceController.setText(markdown)
+    private func clearSearch() {
+        if currentMode == .rendered {
+            renderedController.clearSearchResults()
         }
     }
 

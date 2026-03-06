@@ -35,19 +35,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
-    func application(_ sender: NSApplication, openFile filename: String) -> Bool {
-        let url = URL(fileURLWithPath: filename)
-        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, error in
-            if let error {
-                NSLog("[AppDelegate] Open from openFile failed: %@", error.localizedDescription)
-                NSApp.presentError(error)
-            } else {
-                NSLog("[AppDelegate] Open from openFile succeeded")
-            }
-        }
-        return true
-    }
-
     private func configureMainMenu() {
         let mainMenu = NSMenu()
 
@@ -56,7 +43,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu()
         appMenuItem.submenu = appMenu
 
-        appMenu.addItem(withTitle: "About Markdown", action: nil, keyEquivalent: "")
+        let aboutItem = appMenu.addItem(withTitle: "About Markdown", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        aboutItem.target = nil
+        appMenu.addItem(NSMenuItem.separator())
+        let servicesMenuItem = NSMenuItem()
+        appMenu.addItem(servicesMenuItem)
+        let servicesMenu = NSMenu(title: "Services")
+        servicesMenuItem.submenu = servicesMenu
+        NSApp.servicesMenu = servicesMenu
+
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "Hide Markdown", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h").target = nil
+        let hideOthersItem = appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        hideOthersItem.keyEquivalentModifierMask = [.command, .option]
+        hideOthersItem.target = nil
+        appMenu.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "").target = nil
+
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Quit Markdown", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
@@ -75,9 +77,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let saveItem = fileMenu.addItem(withTitle: "Save", action: #selector(NSDocument.save(_:)), keyEquivalent: "s")
         saveItem.keyEquivalentModifierMask = [.command]
+        saveItem.target = nil
 
         let saveAsItem = fileMenu.addItem(withTitle: "Save As…", action: #selector(NSDocument.saveAs(_:)), keyEquivalent: "S")
         saveAsItem.keyEquivalentModifierMask = [.command, .shift]
+        saveAsItem.target = nil
+
+        let saveAllItem = fileMenu.addItem(withTitle: "Save All", action: #selector(NSDocumentController.saveAllDocuments(_:)), keyEquivalent: "S")
+        saveAllItem.keyEquivalentModifierMask = [.command, .option]
+        saveAllItem.target = nil
+
+        fileMenu.addItem(NSMenuItem.separator())
+        fileMenu.addItem(withTitle: "Print…", action: #selector(NSDocument.printDocument(_:)), keyEquivalent: "p").target = nil
 
         let editMenuItem = NSMenuItem()
         mainMenu.addItem(editMenuItem)
@@ -102,6 +113,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let findItem = editMenu.addItem(withTitle: "Find…", action: #selector(EditorViewController.focusSearch(_:)), keyEquivalent: "f")
         findItem.keyEquivalentModifierMask = [.command]
         findItem.target = nil
+        editMenu.addItem(withTitle: "Find Next", action: #selector(EditorViewController.findNext(_:)), keyEquivalent: "g").target = nil
+        let findPreviousItem = editMenu.addItem(withTitle: "Find Previous", action: #selector(EditorViewController.findPrevious(_:)), keyEquivalent: "G")
+        findPreviousItem.keyEquivalentModifierMask = [.command, .shift]
+        findPreviousItem.target = nil
 
         let viewMenuItem = NSMenuItem()
         mainMenu.addItem(viewMenuItem)

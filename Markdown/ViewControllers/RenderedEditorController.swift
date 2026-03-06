@@ -9,6 +9,11 @@ import AppKit
 import WebKit
 
 private final class RenderedWebView: WKWebView {
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsDisplay = true
+    }
+
     override func scrollWheel(with event: NSEvent) {
         if let scrollView = enclosingScrollView {
             scrollView.scrollWheel(with: event)
@@ -22,12 +27,8 @@ private final class FlippedDocumentView: NSView {
     override var isFlipped: Bool { true }
 }
 
-final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
-    private enum Message {
-        static let markdownChanged = "markdownChanged"
-        static let markdownDebug = "markdownDebug"
-    }
-
+@MainActor
+final class RenderedEditorController: NSObject, WKNavigationDelegate {
     let scrollView = NSScrollView(frame: .zero)
     private let documentContainerView = FlippedDocumentView(frame: .zero)
     private var webView: WKWebView?
@@ -35,23 +36,11 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
 
     private var latestMarkdown = ""
     private var isReady = false
-    private var isApplyingRenderedHTML = false
     private var pendingRefresh = false
-
-    var onMarkdownInput: ((String) -> Void)?
 
     override init() {
         super.init()
         configureScrollView()
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-        pendingHeightRefreshWorkItem?.cancel()
-        if let userContentController = webView?.configuration.userContentController {
-            userContentController.removeScriptMessageHandler(forName: Message.markdownChanged)
-            userContentController.removeScriptMessageHandler(forName: Message.markdownDebug)
-        }
     }
 
     @discardableResult
@@ -60,12 +49,7 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
             return true
         }
 
-        let userContentController = WKUserContentController()
-        userContentController.add(self, name: Message.markdownChanged)
-        userContentController.add(self, name: Message.markdownDebug)
-
         let configuration = WKWebViewConfiguration()
-        configuration.userContentController = userContentController
 
         let webView = RenderedWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
@@ -95,35 +79,29 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
         }
 
         let html = MarkdownRenderer.html(from: markdown)
-        let htmlLiteral = javaScriptStringLiteral(for: html)
+        let htmlLiteral = javaScriptStringLiteral(html)
         let command = """
         (() => {
-          const renderedHTML = \(htmlLiteral);
-          if (typeof window.setRenderedHTML === 'function') {
+          if (typeof window.setRenderedDocument === 'function') {
             try {
-              window.setRenderedHTML(renderedHTML);
-              return 'setRenderedHTML';
+              window.setRenderedDocument(\(htmlLiteral));
+              return 'setRenderedDocument';
             } catch (error) {
-              console.error('setRenderedHTML failed', error);
+              console.error('setRenderedDocument failed', error);
             }
           }
 
           const editor = document.getElementById('editor');
           if (editor) {
-            editor.innerHTML = renderedHTML;
+            editor.innerHTML = \(htmlLiteral);
             return 'fallbackInnerHTML';
           }
 
-          throw new Error('rendered editor element not found');
+        throw new Error('rendered editor element not found');
         })()
         """
 
-        isApplyingRenderedHTML = true
         webView.evaluateJavaScript(command) { [weak self] _, error in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                self?.isApplyingRenderedHTML = false
-            }
-
             if let error {
                 NSLog("Failed to apply rendered HTML: %@", error.localizedDescription)
             }
@@ -144,6 +122,14 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
         webView.find(query, configuration: configuration) { _ in }
     }
 
+    func clearSearchResults() {
+        guard isReady else {
+            return
+        }
+
+        render(markdown: latestMarkdown)
+    }
+
     func focus(in window: NSWindow?) {
         guard let webView else {
             return
@@ -160,38 +146,20 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
         }
     }
 
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        if message.name == Message.markdownDebug {
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
+    ) {
+        guard navigationAction.navigationType == .linkActivated else {
+            decisionHandler(.allow)
             return
         }
 
-        guard message.name == Message.markdownChanged else {
-            return
+        if let url = navigationAction.request.url {
+            NSWorkspace.shared.open(url)
         }
-
-        if isApplyingRenderedHTML {
-            return
-        }
-
-        let markdown: String
-        if let payload = message.body as? [String: Any] {
-            guard
-                let reason = payload["reason"] as? String,
-                reason == "input",
-                let trusted = payload["trusted"] as? Bool,
-                trusted,
-                let markdownValue = payload["markdown"] as? String
-            else {
-                return
-            }
-            markdown = markdownValue
-        } else if let markdownValue = message.body as? String {
-            markdown = markdownValue
-        } else {
-            return
-        }
-
-        onMarkdownInput?(markdown)
+        decisionHandler(.cancel)
     }
 
     private func loadShell() {
@@ -204,15 +172,12 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
         webView.loadHTMLString(RenderedEditorShellHTML.standard, baseURL: Bundle.main.resourceURL)
     }
 
-    private func javaScriptStringLiteral(for value: String) -> String {
-        guard
-            let data = try? JSONSerialization.data(withJSONObject: [value], options: []),
-            let jsonArray = String(data: data, encoding: .utf8)
-        else {
+    private func javaScriptStringLiteral(_ string: String) -> String {
+        guard let data = try? JSONEncoder().encode(string),
+              let json = String(data: data, encoding: .utf8) else {
             return "\"\""
         }
-
-        return String(jsonArray.dropFirst().dropLast())
+        return json
     }
 
     private func configureScrollView() {
@@ -224,19 +189,33 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
         scrollView.scrollerStyle = .overlay
         scrollView.automaticallyAdjustsContentInsets = true
         scrollView.contentView.postsBoundsChangedNotifications = true
+        scrollView.contentView.postsFrameChangedNotifications = true
+        scrollView.postsFrameChangedNotifications = true
 
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(contentViewBoundsDidChange),
+            selector: #selector(containerGeometryDidChange),
             name: NSView.boundsDidChangeNotification,
             object: scrollView.contentView
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(containerGeometryDidChange),
+            name: NSView.frameDidChangeNotification,
+            object: scrollView.contentView
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(containerGeometryDidChange),
+            name: NSView.frameDidChangeNotification,
+            object: scrollView
         )
 
         scrollView.documentView = documentContainerView
     }
 
     @objc
-    private func contentViewBoundsDidChange(_ notification: Notification) {
+    private func containerGeometryDidChange(_ notification: Notification) {
         layoutDocumentContainer(minimumHeight: documentContainerView.frame.height)
         scheduleHeightRefresh()
     }
@@ -261,6 +240,11 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
           const editor = document.getElementById('editor');
           const body = document.body;
           const doc = document.documentElement;
+          if (editor) {
+            void editor.offsetWidth;
+          }
+
+          window.dispatchEvent(new Event('resize'));
           return Math.max(
             editor ? editor.scrollHeight : 0,
             editor ? editor.offsetHeight : 0,
@@ -298,11 +282,18 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate, WKScriptMe
         let width = max(scrollView.contentView.bounds.width, 1)
         let height = max(minimumHeight, scrollView.contentView.bounds.height, 1)
         let frame = NSRect(x: 0, y: 0, width: width, height: height)
+        let widthChanged = abs(documentContainerView.frame.width - frame.width) > .ulpOfOne
 
         if documentContainerView.frame != frame {
             documentContainerView.frame = frame
+            documentContainerView.needsDisplay = true
         }
 
         webView?.frame = documentContainerView.bounds
+        webView?.needsDisplay = true
+
+        if widthChanged {
+            scheduleHeightRefresh(after: 0.15)
+        }
     }
 }

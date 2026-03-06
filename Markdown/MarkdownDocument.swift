@@ -6,13 +6,23 @@
 //
 
 import AppKit
+import Synchronization
 
+@MainActor
 final class MarkdownDocument: NSDocument {
     private nonisolated static let markdownTypeIdentifier = "net.daringfireball.markdown"
     private static let unsavedSubtitle = "Unsaved Markdown Document"
 
-    nonisolated(unsafe) private var textStorage = ""
-    nonisolated(unsafe) private weak var editorViewController: EditorViewController?
+    private let textStorage = Mutex("")
+    private weak var editorViewController: EditorViewController?
+
+    override var fileURL: URL? {
+        didSet {
+            MainActor.assumeIsolated {
+                updateWindowSubtitle()
+            }
+        }
+    }
 
     nonisolated override class var autosavesInPlace: Bool {
         true
@@ -32,22 +42,19 @@ final class MarkdownDocument: NSDocument {
         addWindowController(windowController)
 
         let editor = windowController.editorViewController
-        editor.setDocumentText(textStorage)
+        editor.setDocumentText(storedText())
         editor.onDocumentTextDidChange = { [weak self] text in
             self?.applyEditorTextChange(text)
         }
         editorViewController = editor
 
-        if let window = windowController.window {
-            window.center()
-            NSLog("[MarkdownDocument] makeWindowControllers window centered frame=%@", NSStringFromRect(window.frame))
-        }
         updateWindowSubtitle()
         NSLog("[MarkdownDocument] makeWindowControllers end windowControllers=%ld", windowControllers.count)
     }
 
-    nonisolated override func data(ofType typeName: String) throws -> Data {
-        guard let data = textStorage.data(using: .utf8) else {
+    override func data(ofType typeName: String) throws -> Data {
+        let snapshot = currentTextSnapshot()
+        guard let data = snapshot.data(using: .utf8) else {
             throw CocoaError(.fileWriteInapplicableStringEncoding)
         }
         return data
@@ -58,27 +65,48 @@ final class MarkdownDocument: NSDocument {
             throw CocoaError(.fileReadCorruptFile)
         }
 
-        textStorage = text
+        setStoredText(text)
 
-        if let editor = editorViewController {
-            DispatchQueue.main.async {
-                editor.setDocumentText(text)
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
             }
+            self.editorViewController?.setDocumentText(text)
         }
     }
 
     private func applyEditorTextChange(_ text: String) {
-        guard text != textStorage else {
+        guard text != storedText() else {
             return
         }
-        textStorage = text
+        setStoredText(text)
         updateChangeCount(.changeDone)
     }
 
+    private func currentTextSnapshot() -> String {
+        let snapshot = editorViewController?.documentTextSnapshot() ?? storedText()
+        setStoredText(snapshot)
+        return snapshot
+    }
+
     private func updateWindowSubtitle() {
-        let subtitle = fileURL?.deletingLastPathComponent().path(percentEncoded: false) ?? Self.unsavedSubtitle
+        let subtitle = fileURL
+            .map { ($0.path(percentEncoded: false) as NSString).deletingLastPathComponent }
+            .flatMap { $0.isEmpty ? nil : $0 }
+            ?? Self.unsavedSubtitle
         for controller in windowControllers {
+            controller.window?.representedURL = fileURL
             controller.window?.subtitle = subtitle
+        }
+    }
+
+    nonisolated private func storedText() -> String {
+        textStorage.withLock { $0 }
+    }
+
+    nonisolated private func setStoredText(_ text: String) {
+        textStorage.withLock { value in
+            value = text
         }
     }
 }

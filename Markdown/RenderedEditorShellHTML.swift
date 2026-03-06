@@ -57,17 +57,11 @@ enum RenderedEditorShellHTML {
       min-height: 100%;
       width: 100%;
       padding: 20px 28px;
-      outline: none;
       white-space: normal;
       word-break: break-word;
-      caret-color: var(--text);
       background: transparent;
-    }
-
-    #editor:empty::before {
-      content: \"\";
-      color: var(--muted);
-      pointer-events: none;
+      user-select: text;
+      -webkit-user-select: text;
     }
 
     h1, h2, h3, h4, h5, h6 {
@@ -125,236 +119,205 @@ enum RenderedEditorShellHTML {
       border: 1px solid var(--border);
       padding: 6px 10px;
     }
+
+    [data-task-list="true"] {
+      padding-left: 0;
+    }
+
+    [data-task-list-item="true"] {
+      list-style: none;
+      margin-left: 0;
+    }
+
+    [data-task-list-item="true"] > input[type="checkbox"] {
+      margin: 0 0.55em 0 0;
+      vertical-align: middle;
+      cursor: pointer;
+    }
+
+    [data-task-list-item="true"] > p {
+      display: inline;
+      margin: 0;
+    }
+
   </style>
 </head>
 <body>
-  <article id=\"editor\" contenteditable=\"true\" spellcheck=\"false\"></article>
+  <article id=\"editor\"></article>
   <script src=\"RendererHighlighter.js\"></script>
 
   <script>
     (() => {
       const editor = document.getElementById('editor');
-      let suppressNative = false;
+      const allowedTags = new Set([
+        'a', 'blockquote', 'br', 'code', 'del', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'hr', 'img', 'input', 'li', 'ol', 'p', 'pre', 'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul'
+      ]);
+      const allowedAttributes = {
+        a: new Set(['href', 'title']),
+        code: new Set(['class']),
+        img: new Set(['alt', 'src', 'title']),
+        input: new Set(['checked', 'disabled', 'type'])
+      };
+      const allowedLinkSchemes = new Set(['http:', 'https:', 'mailto:']);
+      const allowedImageSchemes = new Set(['data:', 'http:', 'https:']);
 
-      function postDebug(payload) {
-        try {
-          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.markdownDebug) {
-            window.webkit.messageHandlers.markdownDebug.postMessage(payload);
-          }
-        } catch (_) {
-          // Best-effort debug logging only.
+      function sanitizeLinkValue(value, allowedSchemes) {
+        const trimmed = (value || '').trim();
+        if (!trimmed) {
+          return null;
         }
+
+        if (
+          trimmed.startsWith('#') ||
+          trimmed.startsWith('/') ||
+          (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed) && !trimmed.startsWith('//'))
+        ) {
+          return trimmed;
+        }
+
+        try {
+          const resolved = new URL(trimmed, document.baseURI);
+          if (allowedSchemes.has(resolved.protocol.toLowerCase())) {
+            return resolved.href;
+          }
+        } catch (error) {
+          console.error('sanitizeLinkValue failed', error);
+        }
+
+        return null;
       }
 
-      function escapeText(text) {
-        return text
-          .replace(/\\\\/g, '\\\\\\\\')
-          .replace(/([`*_{}[\\]()#+\\-.!|>])/g, '\\\\$1');
+      function sanitizeNode(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          return document.createTextNode(node.textContent || '');
+        }
+
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+          return null;
+        }
+
+        const tag = node.tagName.toLowerCase();
+        if (!allowedTags.has(tag)) {
+          const fragment = document.createDocumentFragment();
+          Array.from(node.childNodes).forEach((child) => {
+            const sanitizedChild = sanitizeNode(child);
+            if (sanitizedChild) {
+              fragment.appendChild(sanitizedChild);
+            }
+          });
+          return fragment;
+        }
+
+        const clean = document.createElement(tag);
+        const allowedForTag = allowedAttributes[tag] || new Set();
+
+        if (tag === 'input') {
+          const type = (node.getAttribute('type') || '').toLowerCase();
+          if (type !== 'checkbox' || !node.hasAttribute('disabled')) {
+            return null;
+          }
+
+          clean.setAttribute('type', 'checkbox');
+          clean.setAttribute('disabled', '');
+          if (node.hasAttribute('checked')) {
+            clean.setAttribute('checked', '');
+          }
+          return clean;
+        }
+
+        Array.from(node.attributes).forEach((attribute) => {
+          const name = attribute.name.toLowerCase();
+          if (!allowedForTag.has(name)) {
+            return;
+          }
+
+          if (tag === 'a' && name === 'href') {
+            const sanitizedHref = sanitizeLinkValue(attribute.value, allowedLinkSchemes);
+            if (sanitizedHref) {
+              clean.setAttribute('href', sanitizedHref);
+              clean.setAttribute('rel', 'noopener noreferrer');
+            }
+            return;
+          }
+
+          if (tag === 'img' && name === 'src') {
+            const sanitizedSrc = sanitizeLinkValue(attribute.value, allowedImageSchemes);
+            if (sanitizedSrc) {
+              clean.setAttribute('src', sanitizedSrc);
+            }
+            return;
+          }
+
+          clean.setAttribute(name, attribute.value);
+        });
+
+        Array.from(node.childNodes).forEach((child) => {
+          const sanitizedChild = sanitizeNode(child);
+          if (sanitizedChild) {
+            clean.appendChild(sanitizedChild);
+          }
+        });
+
+        if (tag === 'li') {
+          const firstElementChild = clean.firstElementChild;
+          if (
+            firstElementChild &&
+            firstElementChild.tagName.toLowerCase() === 'input' &&
+            firstElementChild.getAttribute('type') === 'checkbox'
+          ) {
+            clean.setAttribute('data-task-list-item', 'true');
+          }
+        }
+
+        if (tag === 'ul' || tag === 'ol') {
+          const hasTaskListItems = Array.from(clean.children).some((child) => (
+            child instanceof HTMLElement &&
+            child.getAttribute('data-task-list-item') === 'true'
+          ));
+
+          if (hasTaskListItems) {
+            clean.setAttribute('data-task-list', 'true');
+          }
+        }
+
+        return clean;
+      }
+
+      function sanitizedFragment(html) {
+        const template = document.createElement('template');
+        template.innerHTML = html;
+
+        const fragment = document.createDocumentFragment();
+        Array.from(template.content.childNodes).forEach((child) => {
+          const sanitizedChild = sanitizeNode(child);
+          if (sanitizedChild) {
+            fragment.appendChild(sanitizedChild);
+          }
+        });
+
+        return fragment;
       }
 
       async function highlightCodeBlocks() {
         if (!window.MarkdownStarryNight || typeof window.MarkdownStarryNight.highlightCodeBlocks !== 'function') {
-          postDebug({
-            event: 'highlight.skip',
-            reason: 'highlighterUnavailable'
-          });
           return;
         }
 
         try {
           await window.MarkdownStarryNight.highlightCodeBlocks(editor);
-          postDebug({
-            event: 'highlight.done'
-          });
         } catch (error) {
-          postDebug({
-            event: 'highlight.error',
-            message: String(error)
-          });
+          console.error('highlightCodeBlocks failed', error);
         }
       }
 
-      function inlineMarkdown(node) {
-        if (node.nodeType === Node.TEXT_NODE) {
-          return escapeText(node.textContent || '');
-        }
-
-        if (node.nodeType !== Node.ELEMENT_NODE) {
-          return '';
-        }
-
-        const tag = node.tagName.toLowerCase();
-        const children = Array.from(node.childNodes).map(inlineMarkdown).join('');
-
-        if (tag === 'strong' || tag === 'b') return `**${children}**`;
-        if (tag === 'em' || tag === 'i') return `*${children}*`;
-        if (tag === 'del' || tag === 's') return `~~${children}~~`;
-        if (tag === 'code') return `\\`${node.textContent || ''}\\``;
-        if (tag === 'a') {
-          const href = node.getAttribute('href') || '';
-          return `[${children}](${href})`;
-        }
-        if (tag === 'img') {
-          const src = node.getAttribute('src') || '';
-          const alt = node.getAttribute('alt') || '';
-          return `![${escapeText(alt)}](${src})`;
-        }
-        if (tag === 'br') return '  \\n';
-
-        return children;
-      }
-
-      function blockMarkdown(node) {
-        if (node.nodeType === Node.TEXT_NODE) {
-          const text = (node.textContent || '').trim();
-          return text ? `${escapeText(text)}\\n\\n` : '';
-        }
-
-        if (node.nodeType !== Node.ELEMENT_NODE) {
-          return '';
-        }
-
-        const tag = node.tagName.toLowerCase();
-
-        if (tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4' || tag === 'h5' || tag === 'h6') {
-          const level = Number(tag[1]);
-          const content = Array.from(node.childNodes).map(inlineMarkdown).join('').trim();
-          return `${'#'.repeat(level)} ${content}\\n\\n`;
-        }
-
-        if (tag === 'p') {
-          const content = Array.from(node.childNodes).map(inlineMarkdown).join('').trim();
-          return content ? `${content}\\n\\n` : '';
-        }
-
-        if (tag === 'blockquote') {
-          const inner = Array.from(node.childNodes).map(blockMarkdown).join('').trim();
-          const prefixed = inner.split('\\n').map(line => line ? `> ${line}` : '>').join('\\n');
-          return `${prefixed}\\n\\n`;
-        }
-
-        if (tag === 'pre') {
-          const code = node.querySelector('code');
-          let language = '';
-          if (code && code.className.startsWith('language-')) {
-            language = code.className.replace('language-', '');
-          }
-          const body = (code ? code.textContent : node.textContent) || '';
-          return `\\`\\`\\`${language}\\n${body.replace(/\\n+$/, '')}\\n\\`\\`\\`\\n\\n`;
-        }
-
-        if (tag === 'ul' || tag === 'ol') {
-          const listItems = Array.from(node.children).filter(child => child.tagName && child.tagName.toLowerCase() === 'li');
-          const rendered = listItems.map((item, index) => {
-            let prefix = tag === 'ol' ? `${index + 1}. ` : '- ';
-
-            const checkbox = item.querySelector(':scope > input[type="checkbox"]');
-            if (checkbox) {
-              prefix = `- [${checkbox.checked ? 'x' : ' '}] `;
-            }
-
-            const childContent = Array.from(item.childNodes)
-              .filter(child => !(child.tagName && child.tagName.toLowerCase() === 'input'))
-              .map(child => {
-                if (child.nodeType === Node.ELEMENT_NODE) {
-                  const childTag = child.tagName.toLowerCase();
-                  if (childTag === 'ul' || childTag === 'ol') {
-                    const nested = blockMarkdown(child).trimEnd().split('\\n').map(line => line ? `  ${line}` : '').join('\\n');
-                    return `\\n${nested}`;
-                  }
-                }
-                return inlineMarkdown(child);
-              })
-              .join('')
-              .trim();
-
-            return `${prefix}${childContent}`;
-          }).join('\\n');
-
-          return `${rendered}\\n\\n`;
-        }
-
-        if (tag === 'hr') {
-          return `---\\n\\n`;
-        }
-
-        if (tag === 'table') {
-          const rows = Array.from(node.querySelectorAll('tr')).map(tr => {
-            const cells = Array.from(tr.children).map(cell => (cell.textContent || '').trim().replace(/\\|/g, '\\\\|'));
-            return `| ${cells.join(' | ')} |`;
-          });
-
-          if (rows.length > 0) {
-            const headerCells = Array.from(node.querySelectorAll('tr:first-child th, tr:first-child td')).length;
-            if (headerCells > 0) {
-              const separator = `| ${Array.from({ length: headerCells }).map(() => '---').join(' | ')} |`;
-              rows.splice(1, 0, separator);
-            }
-          }
-
-          return rows.length ? `${rows.join('\\n')}\\n\\n` : '';
-        }
-
-        return Array.from(node.childNodes).map(blockMarkdown).join('');
-      }
-
-      function postMarkdown(event) {
-        if (suppressNative) return;
-        if (event && event.isComposing) return;
-
-        const markdown = blockMarkdown(editor).replace(/\\s+$/, '') + '\\n';
-        postDebug({
-          event: 'postMarkdown',
-          trusted: event ? !!event.isTrusted : false,
-          markdownLen: markdown.length
-        });
-        window.webkit.messageHandlers.markdownChanged.postMessage({
-          markdown,
-          reason: 'input',
-          trusted: event ? !!event.isTrusted : false
-        });
-      }
-
-      editor.addEventListener('input', (event) => postMarkdown(event));
-
-      window.getMarkdown = () => blockMarkdown(editor).replace(/\\s+$/, '') + '\\n';
-
-      window.performEditorUndo = () => {
-        editor.focus();
-        document.execCommand('undo');
-      };
-
-      window.performEditorRedo = () => {
-        editor.focus();
-        document.execCommand('redo');
-      };
-
-      window.setRenderedHTML = (html) => {
-        const safeHTML = typeof html === 'string' ? html : '';
-        postDebug({
-          event: 'setRenderedHTML.begin',
-          htmlLen: safeHTML.length
-        });
-        suppressNative = true;
-        try {
-          editor.innerHTML = safeHTML;
-          highlightCodeBlocks();
-        } catch (error) {
-          postDebug({
-            event: 'setRenderedHTML.error',
-            message: String(error)
-          });
-          editor.innerHTML = safeHTML;
-        }
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            suppressNative = false;
-            postDebug({
-              event: 'setRenderedHTML.end',
-              textLen: (editor.textContent || '').length
-            });
-          });
-        });
+      window.setRenderedDocument = (payload) => {
+        const safeHTML = typeof payload === 'string'
+          ? payload
+          : (typeof payload?.html === 'string' ? payload.html : '');
+        editor.replaceChildren();
+        editor.appendChild(sanitizedFragment(safeHTML));
+        highlightCodeBlocks();
       };
     })();
   </script>

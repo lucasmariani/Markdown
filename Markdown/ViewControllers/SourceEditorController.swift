@@ -7,7 +7,16 @@
 
 import AppKit
 
+@MainActor
 final class SourceEditorController: NSObject, NSTextViewDelegate {
+    private final class TextFinderActionSender: NSObject {
+        let tag: Int
+
+        init(action: NSTextFinder.Action) {
+            self.tag = action.rawValue
+        }
+    }
+
     let scrollView = NSScrollView(frame: .zero)
     private let textView = NSTextView(frame: .zero)
 
@@ -22,6 +31,10 @@ final class SourceEditorController: NSObject, NSTextViewDelegate {
     }
 
     func setText(_ text: String) {
+        guard textView.string != text else {
+            return
+        }
+
         isUpdatingProgrammatically = true
         textView.string = text
         isUpdatingProgrammatically = false
@@ -33,6 +46,16 @@ final class SourceEditorController: NSObject, NSTextViewDelegate {
 
     func focus(in window: NSWindow?) {
         window?.makeFirstResponder(textView)
+    }
+
+    func showFindInterface(in window: NSWindow?) {
+        focus(in: window)
+        textView.performTextFinderAction(TextFinderActionSender(action: .showFindInterface))
+    }
+
+    func performTextFinderAction(_ action: NSTextFinder.Action, in window: NSWindow?) {
+        focus(in: window)
+        textView.performTextFinderAction(TextFinderActionSender(action: action))
     }
 
     @discardableResult
@@ -85,7 +108,8 @@ final class SourceEditorController: NSObject, NSTextViewDelegate {
         textView.isSelectable = true
         textView.isRichText = false
         textView.allowsUndo = true
-        textView.usesFindBar = false
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
         textView.usesFontPanel = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
@@ -111,6 +135,7 @@ final class SourceEditorController: NSObject, NSTextViewDelegate {
         scrollView.drawsBackground = false
         scrollView.scrollerStyle = .overlay
         scrollView.automaticallyAdjustsContentInsets = true
+        scrollView.findBarPosition = .aboveContent
         scrollView.documentView = textView
     }
 }

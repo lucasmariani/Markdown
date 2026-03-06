@@ -7,6 +7,7 @@
 
 import AppKit
 
+@MainActor
 final class MainWindowController: NSWindowController, NSToolbarDelegate {
     private enum ToolbarItemID {
         static let mode = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.mode")

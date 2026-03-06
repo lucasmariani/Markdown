@@ -7,13 +7,14 @@
 
 import AppKit
 
+@MainActor
 final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
     var onQueryChanged: ((String) -> Void)?
     var onFindRequested: ((Bool) -> Void)?
     var onDoneRequested: (() -> Void)?
 
     var query: String {
-        searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        searchField.stringValue
     }
 
     private let searchField = NSSearchField()
@@ -51,7 +52,7 @@ final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
 
         searchField.placeholderString = "Find"
         searchField.sendsSearchStringImmediately = true
-        searchField.sendsWholeSearchString = true
+        searchField.sendsWholeSearchString = false
         searchField.delegate = self
         searchField.target = self
         searchField.action = #selector(searchFieldChanged(_:))

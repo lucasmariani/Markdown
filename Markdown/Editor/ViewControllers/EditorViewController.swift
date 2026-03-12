@@ -46,7 +46,7 @@ final class EditorViewController: NSViewController {
         RenderedEditorController()
     }()
 
-    private lazy var findCoordinator: SearchCoordinator = {
+    private lazy var searchCoordinator: SearchCoordinator = {
         let coordinator = SearchCoordinator(searchController: searchController)
         coordinator.onSearchRequested = { [weak self] query, backwards in
             self?.performSearch(query: query, backwards: backwards)
@@ -55,7 +55,7 @@ final class EditorViewController: NSViewController {
             self?.clearSearch()
         }
         coordinator.onDoneRequested = { [weak self] in
-            self?.hideFindBar()
+            self?.unfocusSearchItem()
         }
         return coordinator
     }()
@@ -84,7 +84,7 @@ final class EditorViewController: NSViewController {
         let contentContainer = NSView()
         let contentSurface = makeContentSurface()
 
-        _ = findCoordinator
+        _ = searchCoordinator
 
         contentContainer.addSubview(contentSurface)
         contentSurface.addSubview(sourceController.scrollView)
@@ -126,12 +126,12 @@ final class EditorViewController: NSViewController {
 
     // MARK: - Search
 
-    private func showFindBar() {
-        findCoordinator.focusSearch()
+    private func focusOnSearchItem() {
+        searchCoordinator.focusSearch()
         updateSearchMatchCount(for: searchController.query)
     }
 
-    private func hideFindBar() {
+    private func unfocusSearchItem() {
         focusActiveEditor()
         searchController.collapse()
     }
@@ -166,18 +166,18 @@ final class EditorViewController: NSViewController {
     private func handleSourceTextFinderAction(_ action: NSTextFinder.Action) -> Bool {
         switch action {
         case .showFindInterface:
-            showFindBar()
+            focusOnSearchItem()
             return true
         case .nextMatch:
-            showFindBar()
+            focusOnSearchItem()
             performSearch(query: searchController.query, backwards: false)
             return true
         case .previousMatch:
-            showFindBar()
+            focusOnSearchItem()
             performSearch(query: searchController.query, backwards: true)
             return true
         case .hideFindInterface:
-            hideFindBar()
+            unfocusSearchItem()
             return true
         default:
             return false
@@ -295,16 +295,16 @@ extension EditorViewController {
     }
 
     @objc func focusSearch(_ sender: Any?) {
-        showFindBar()
+        focusOnSearchItem()
     }
 
     @objc func findNext(_ sender: Any?) {
-        showFindBar()
+        focusOnSearchItem()
         performSearch(query: searchController.query, backwards: false)
     }
 
     @objc func findPrevious(_ sender: Any?) {
-        showFindBar()
+        focusOnSearchItem()
         performSearch(query: searchController.query, backwards: true)
     }
 }

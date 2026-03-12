@@ -2,7 +2,7 @@
 //  PreviewProvider.swift
 //  MarkdownQuickLookPreview
 //
-//  Created by Codex on 3/12/26.
+//  Created by Lucas on 3/12/26.
 //
 
 import Cocoa

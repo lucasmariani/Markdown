@@ -2,7 +2,7 @@
 //  MarkdownDocument.swift
 //  Markdown
 //
-//  Created by Codex on 04/03/26.
+//  Created by Lucas on 04/03/26.
 //
 
 import AppKit

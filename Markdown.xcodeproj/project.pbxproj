@@ -53,9 +53,25 @@
 		74686E74D5B34BE98A06FC51 /* Exceptions for "MarkdownQuickLookPreview" folder in "MarkdownQuickLookPreview" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Info.plist,
+				Resources/Info.plist,
 			);
 			target = B6E6CC8925FE4B23A1EDB58B /* MarkdownQuickLookPreview */;
+		};
+		A0F3BDF42F637A4800A7E196 /* Exceptions for "Markdown" folder in "Markdown" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Tests/DocumentLaunchPolicyTests.swift,
+				Tests/MarkdownDocumentTests.swift,
+			);
+			target = A01C160F2F58D7F200081EC9 /* Markdown */;
+		};
+		A0F3BDF52F637A4800A7E196 /* Exceptions for "Markdown" folder in "MarkdownTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Tests/DocumentLaunchPolicyTests.swift,
+				Tests/MarkdownDocumentTests.swift,
+			);
+			target = A01C16232F59000000081EC9 /* MarkdownTests */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -70,12 +86,11 @@
 		};
 		A01C16122F58D7F200081EC9 /* Markdown */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A0F3BDF42F637A4800A7E196 /* Exceptions for "Markdown" folder in "Markdown" target */,
+				A0F3BDF52F637A4800A7E196 /* Exceptions for "Markdown" folder in "MarkdownTests" target */,
+			);
 			path = Markdown;
-			sourceTree = "<group>";
-		};
-		A01C16222F59000000081EC9 /* MarkdownTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MarkdownTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -112,7 +127,6 @@
 			children = (
 				A01C16122F58D7F200081EC9 /* Markdown */,
 				1A19BF807ED0409AB3DFEC40 /* MarkdownQuickLookPreview */,
-				A01C16222F59000000081EC9 /* MarkdownTests */,
 				A01C16112F58D7F200081EC9 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -167,9 +181,6 @@
 			);
 			dependencies = (
 				A01C162A2F59000000081EC9 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				A01C16222F59000000081EC9 /* MarkdownTests */,
 			);
 			name = MarkdownTests;
 			packageProductDependencies = (
@@ -320,7 +331,7 @@
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = MarkdownQuickLookPreview/Info.plist;
+				INFOPLIST_FILE = MarkdownQuickLookPreview/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -615,7 +626,7 @@
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = MarkdownQuickLookPreview/Info.plist;
+				INFOPLIST_FILE = MarkdownQuickLookPreview/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

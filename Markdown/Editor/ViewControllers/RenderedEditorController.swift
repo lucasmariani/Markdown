@@ -2,7 +2,7 @@
 //  RenderedEditorController.swift
 //  Markdown
 //
-//  Created by Codex on 05/03/26.
+//  Created by Lucas on 05/03/26.
 //
 
 import AppKit

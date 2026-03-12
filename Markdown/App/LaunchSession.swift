@@ -2,7 +2,7 @@
 //  LaunchSession.swift
 //  Markdown
 //
-//  Created by Codex on 06/03/26.
+//  Created by Lucas on 06/03/26.
 //
 
 import Foundation

@@ -1,19 +1,21 @@
 //
-//  SearchBarView.swift
+//  SearchToolbarController.swift
 //  Markdown
 //
-//  Created by Codex on 04/03/26.
+//  Created by Lucas on 04/03/26.
 //
 
 import AppKit
 
 @MainActor
-final class SearchBarView: NSObject, NSSearchFieldDelegate {
+final class SearchToolbarController: NSObject {
     private enum Metrics {
         static let preferredWidth: CGFloat = 110
         static let fallbackHeight: CGFloat = 28
     }
 
+    // Keeps the match count inside a standard NSSearchField so the toolbar item
+    // still uses native AppKit expansion and compression behavior.
     private final class CountAwareSearchField: NSSearchField {
         private let countLabel = NSTextField(labelWithString: "")
         private var reservedTrailingWidth: CGFloat = 0
@@ -127,6 +129,8 @@ final class SearchBarView: NSObject, NSSearchFieldDelegate {
         configureToolbarItem()
     }
 
+    // MARK: - Public API
+
     func focus(initialQuery: String?) {
         if searchField.stringValue.isEmpty, let initialQuery, !initialQuery.isEmpty {
             searchField.stringValue = initialQuery
@@ -152,8 +156,12 @@ final class SearchBarView: NSObject, NSSearchFieldDelegate {
     func setMatchCount(_ count: Int?) {
         searchField.setMatchCount(count)
     }
+}
 
-    private func configureToolbarItem() {
+// MARK: - Setup
+
+private extension SearchToolbarController {
+    func configureToolbarItem() {
         searchToolbarItem.label = "Search"
         searchToolbarItem.paletteLabel = "Search"
         searchToolbarItem.toolTip = "Search"
@@ -162,7 +170,7 @@ final class SearchBarView: NSObject, NSSearchFieldDelegate {
         searchToolbarItem.searchField = searchField
     }
 
-    private func configureSearchField() {
+    func configureSearchField() {
         searchField.placeholderString = "Search"
         searchField.sendsSearchStringImmediately = true
         searchField.sendsWholeSearchString = false
@@ -170,7 +178,11 @@ final class SearchBarView: NSObject, NSSearchFieldDelegate {
         searchField.target = self
         searchField.action = #selector(searchFieldChanged(_:))
     }
+}
 
+// MARK: - NSSearchFieldDelegate
+
+extension SearchToolbarController: NSSearchFieldDelegate {
     @objc private func searchFieldChanged(_ sender: NSSearchField) {
         onQueryChanged?(query)
     }
@@ -186,32 +198,19 @@ final class SearchBarView: NSObject, NSSearchFieldDelegate {
     func controlTextDidEndEditing(_ obj: Notification) {
         collapseIfPossible()
     }
+}
 
-    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        guard control == searchField else {
-            return false
-        }
+// MARK: - Helpers
 
-        if commandSelector == #selector(NSResponder.insertNewline(_:)) ||
-            commandSelector == #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)) {
-            let backwards = NSApp.currentEvent?.modifierFlags.contains(.shift) == true
-            onSearchRequested?(backwards)
-            return true
-        }
-
-        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-            onDoneRequested?()
-            return true
-        }
-
-        return false
-    }
-
-    private func collapseIfPossible() {
+private extension SearchToolbarController {
+    func collapseIfPossible() {
         guard query.isEmpty, isSearchInteractionActive else {
             return
         }
 
+        // beginSearchInteraction() keeps the toolbar item expanded until the app
+        // explicitly ends the interaction, so we collapse when editing ends and
+        // the field is both blank and no longer first responder.
         let currentEditor = searchField.currentEditor()
         guard searchField.window?.firstResponder !== currentEditor else {
             return

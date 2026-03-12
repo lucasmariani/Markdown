@@ -17,10 +17,13 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     var onDocumentTextDidChange: ((String) -> Void)?
     var onModeChanged: ((Bool) -> Void)?
 
+    var toolbarSearchView: SearchBarView {
+        searchBarView
+    }
+
     private let searchBarView = SearchBarView()
     private var currentMode: EditorMode = .source
     private var sourceText: String = ""
-    private var findBarHeightConstraint: NSLayoutConstraint?
 
     private lazy var sourceController: SourceEditorController = {
         let controller = SourceEditorController()
@@ -78,7 +81,6 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
 
         _ = findCoordinator
 
-        contentContainer.addSubview(searchBarView)
         contentContainer.addSubview(contentSurface)
         contentSurface.addSubview(sourceController.scrollView)
         contentSurface.addSubview(renderedController.scrollView)
@@ -89,10 +91,6 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         let safeArea = contentContainer.safeAreaLayoutGuide
 
         NSLayoutConstraint.activate([
-            searchBarView.leadingAnchor.constraint(equalTo: safeArea.leadingAnchor),
-            searchBarView.trailingAnchor.constraint(equalTo: safeArea.trailingAnchor),
-            searchBarView.topAnchor.constraint(equalTo: safeArea.topAnchor),
-
             contentSurface.leadingAnchor.constraint(equalTo: safeArea.leadingAnchor),
             contentSurface.trailingAnchor.constraint(equalTo: safeArea.trailingAnchor),
             contentSurface.topAnchor.constraint(equalTo: contentContainer.topAnchor),
@@ -108,10 +106,6 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
             renderedController.scrollView.topAnchor.constraint(equalTo: contentSurface.topAnchor),
             renderedController.scrollView.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor),
         ])
-
-        let findBarHeight = searchBarView.heightAnchor.constraint(equalToConstant: 0)
-        findBarHeight.isActive = true
-        findBarHeightConstraint = findBarHeight
 
         self.view = contentContainer
         sourceController.scrollView.isHidden = false
@@ -190,15 +184,13 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
             sourceController.focus(in: view.window)
         }
 
-        if !searchBarView.isHidden {
+        if searchBarView.isExpanded {
             updateSearchMatchCount(for: searchBarView.query)
         }
     }
 
     private func showFindBar() {
-        searchBarView.isHidden = false
-        findBarHeightConstraint?.constant = 40
-        view.layoutSubtreeIfNeeded()
+        findCoordinator.focusSearch()
         updateSearchMatchCount(for: searchBarView.query)
     }
 
@@ -209,9 +201,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
             renderedController.focus(in: view.window)
         }
 
-        findBarHeightConstraint?.constant = 0
-        view.layoutSubtreeIfNeeded()
-        searchBarView.isHidden = true
+        searchBarView.collapse()
     }
 
     private func performSearch(query: String, backwards: Bool) {
@@ -236,7 +226,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         sourceText = text
         onDocumentTextDidChange?(sourceText)
 
-        if currentMode == .source, !searchBarView.isHidden {
+        if currentMode == .source, searchBarView.isExpanded {
             updateSearchMatchCount(for: searchBarView.query)
         }
     }

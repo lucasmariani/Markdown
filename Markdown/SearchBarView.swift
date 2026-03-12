@@ -8,7 +8,12 @@
 import AppKit
 
 @MainActor
-final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
+final class SearchBarView: NSObject, NSSearchFieldDelegate {
+    private enum Metrics {
+        static let preferredWidth: CGFloat = 110
+        static let fallbackHeight: CGFloat = 28
+    }
+
     private final class CountAwareSearchField: NSSearchField {
         private let countLabel = NSTextField(labelWithString: "")
         private var reservedTrailingWidth: CGFloat = 0
@@ -39,8 +44,7 @@ final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
 
             countLabel.stringValue = count == 1 ? "1 match" : "\(count) matches"
             countLabel.isHidden = false
-            let fittingWidth = ceil(measuredLabelSize().width)
-            reservedTrailingWidth = fittingWidth + 10
+            reservedTrailingWidth = ceil(measuredLabelSize().width) + 10
             needsDisplay = true
             needsLayout = true
         }
@@ -79,7 +83,7 @@ final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
                     x: 0,
                     y: 0,
                     width: CGFloat.greatestFiniteMagnitude,
-                    height: bounds.height > 0 ? bounds.height : 28
+                    height: bounds.height > 0 ? bounds.height : Metrics.fallbackHeight
                 ))
             }
 
@@ -101,119 +105,86 @@ final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
     var onSearchRequested: ((Bool) -> Void)?
     var onDoneRequested: (() -> Void)?
 
+    var toolbarItem: NSSearchToolbarItem {
+        searchToolbarItem
+    }
+
     var query: String {
         searchField.stringValue
     }
 
-    private let searchField = CountAwareSearchField()
-    private let previousButton = NSButton()
-    private let nextButton = NSButton()
-    private let doneButton = NSButton()
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        configureView()
+    var isExpanded: Bool {
+        isSearchInteractionActive
     }
 
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    private let searchField = CountAwareSearchField(frame: .zero)
+    private let searchToolbarItem = NSSearchToolbarItem(itemIdentifier: NSToolbarItem.Identifier("com.rianami.markdown.toolbar.search"))
+    private var isSearchInteractionActive = false
+
+    override init() {
+        super.init()
+        configureSearchField()
+        configureToolbarItem()
     }
 
     func focus(initialQuery: String?) {
         if searchField.stringValue.isEmpty, let initialQuery, !initialQuery.isEmpty {
             searchField.stringValue = initialQuery
         }
-        searchField.selectText(nil)
+
+        isSearchInteractionActive = true
+        searchToolbarItem.beginSearchInteraction()
+
+        Task { @MainActor [weak self] in
+            self?.searchField.selectText(nil)
+        }
+    }
+
+    func collapse() {
+        guard isSearchInteractionActive else {
+            return
+        }
+
+        isSearchInteractionActive = false
+        searchToolbarItem.endSearchInteraction()
     }
 
     func setMatchCount(_ count: Int?) {
         searchField.setMatchCount(count)
     }
 
-    private func configureView() {
-        material = .headerView
-        blendingMode = .withinWindow
-        state = .active
-        translatesAutoresizingMaskIntoConstraints = false
-        isHidden = true
+    private func configureToolbarItem() {
+        searchToolbarItem.label = "Search"
+        searchToolbarItem.paletteLabel = "Search"
+        searchToolbarItem.toolTip = "Search"
+        searchToolbarItem.preferredWidthForSearchField = Metrics.preferredWidth
+        searchToolbarItem.resignsFirstResponderWithCancel = true
+        searchToolbarItem.searchField = searchField
+    }
 
-        let separator = NSBox()
-        separator.boxType = .separator
-        separator.translatesAutoresizingMaskIntoConstraints = false
-
-        searchField.placeholderString = "Find"
+    private func configureSearchField() {
+        searchField.placeholderString = "Search"
         searchField.sendsSearchStringImmediately = true
         searchField.sendsWholeSearchString = false
         searchField.delegate = self
         searchField.target = self
         searchField.action = #selector(searchFieldChanged(_:))
-        searchField.translatesAutoresizingMaskIntoConstraints = false
-
-        previousButton.image = NSImage(systemSymbolName: "chevron.up", accessibilityDescription: "Previous Match")
-        previousButton.bezelStyle = .texturedRounded
-        previousButton.isBordered = true
-        previousButton.target = self
-        previousButton.action = #selector(findPrevious(_:))
-        previousButton.translatesAutoresizingMaskIntoConstraints = false
-
-        nextButton.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: "Next Match")
-        nextButton.bezelStyle = .texturedRounded
-        nextButton.isBordered = true
-        nextButton.target = self
-        nextButton.action = #selector(findNext(_:))
-        nextButton.translatesAutoresizingMaskIntoConstraints = false
-
-        doneButton.title = "Done"
-        doneButton.bezelStyle = .texturedRounded
-        doneButton.target = self
-        doneButton.action = #selector(doneFinding(_:))
-        doneButton.translatesAutoresizingMaskIntoConstraints = false
-
-        addSubview(searchField)
-        addSubview(previousButton)
-        addSubview(nextButton)
-        addSubview(doneButton)
-        addSubview(separator)
-
-        NSLayoutConstraint.activate([
-            searchField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            searchField.centerYAnchor.constraint(equalTo: centerYAnchor),
-            searchField.heightAnchor.constraint(equalToConstant: 28),
-            searchField.widthAnchor.constraint(greaterThanOrEqualToConstant: 260),
-
-            previousButton.leadingAnchor.constraint(equalTo: searchField.trailingAnchor, constant: 8),
-            previousButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-            previousButton.widthAnchor.constraint(equalToConstant: 28),
-
-            nextButton.widthAnchor.constraint(equalToConstant: 28),
-            nextButton.leadingAnchor.constraint(equalTo: previousButton.trailingAnchor, constant: 4),
-            nextButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-
-            doneButton.leadingAnchor.constraint(equalTo: nextButton.trailingAnchor, constant: 10),
-            doneButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            doneButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-
-            separator.leadingAnchor.constraint(equalTo: leadingAnchor),
-            separator.trailingAnchor.constraint(equalTo: trailingAnchor),
-            separator.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
     }
 
     @objc private func searchFieldChanged(_ sender: NSSearchField) {
         onQueryChanged?(query)
     }
 
-    @objc private func findNext(_ sender: Any?) {
-        onSearchRequested?(false)
+    func searchFieldDidStartSearching(_ sender: NSSearchField) {
+        isSearchInteractionActive = true
     }
 
-    @objc private func findPrevious(_ sender: Any?) {
-        onSearchRequested?(true)
+    func searchFieldDidEndSearching(_ sender: NSSearchField) {
+        collapseIfPossible()
     }
 
-    @objc private func doneFinding(_ sender: Any?) {
-        onDoneRequested?()
+    func controlTextDidEndEditing(_ obj: Notification) {
+        collapseIfPossible()
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -234,5 +205,18 @@ final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
         }
 
         return false
+    }
+
+    private func collapseIfPossible() {
+        guard query.isEmpty, isSearchInteractionActive else {
+            return
+        }
+
+        let currentEditor = searchField.currentEditor()
+        guard searchField.window?.firstResponder !== currentEditor else {
+            return
+        }
+
+        collapse()
     }
 }

@@ -10,6 +10,7 @@ import AppKit
 @MainActor
 final class MainWindowController: NSWindowController, NSToolbarDelegate {
     private enum ToolbarItemID {
+        static let search = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.search")
         static let mode = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.mode")
     }
 
@@ -23,8 +24,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
             backing: .buffered,
             defer: false
         )
-        window.minSize = NSSize(width: 700, height: 500)
-        window.toolbarStyle = .automatic
+        window.minSize = NSSize(width: 100, height: 100)
+        window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .automatic
         window.contentViewController = editorViewController
         window.isReleasedWhenClosed = false
@@ -50,11 +51,11 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, ToolbarItemID.mode]
+        [.flexibleSpace, ToolbarItemID.search, ToolbarItemID.mode]
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, ToolbarItemID.mode]
+        [.flexibleSpace, ToolbarItemID.search, ToolbarItemID.mode]
     }
 
     func toolbar(
@@ -63,6 +64,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         switch itemIdentifier {
+        case ToolbarItemID.search:
+            return editorViewController.toolbarSearchView.toolbarItem
         case ToolbarItemID.mode:
             let item = NSToolbarItem(itemIdentifier: ToolbarItemID.mode)
             item.label = "Editor Mode"

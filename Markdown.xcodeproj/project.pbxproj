@@ -326,7 +326,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
 				MARKETING_VERSION = 0.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown.QuickLookPreview;
 				PRODUCT_MODULE_NAME = MarkdownQuickLookPreview;
@@ -621,7 +621,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
 				MARKETING_VERSION = 0.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown.QuickLookPreview;
 				PRODUCT_MODULE_NAME = MarkdownQuickLookPreview;

@@ -24,12 +24,11 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
             defer: false
         )
         window.minSize = NSSize(width: 700, height: 500)
-        window.toolbarStyle = .unified
+        window.toolbarStyle = .automatic
         window.titlebarSeparatorStyle = .automatic
         window.contentViewController = editorViewController
         window.isReleasedWhenClosed = false
         window.titlebarAppearsTransparent = false
-//        window.titleVisibility = .hidden
 
         window.styleMask.insert(.fullSizeContentView)
 

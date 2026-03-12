@@ -14,8 +14,12 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         case source = 0
     }
 
-    private let searchBarView = SearchBarView()
+    var onDocumentTextDidChange: ((String) -> Void)?
+    var onModeChanged: ((Bool) -> Void)?
 
+    private let searchBarView = SearchBarView()
+    private var currentMode: EditorMode = .source
+    private var sourceText: String = ""
     private var findBarHeightConstraint: NSLayoutConstraint?
 
     private lazy var sourceController: SourceEditorController = {
@@ -46,12 +50,6 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         }
         return coordinator
     }()
-
-    var onDocumentTextDidChange: ((String) -> Void)?
-    var onModeChanged: ((Bool) -> Void)?
-
-    private var currentMode: EditorMode = .source
-    private var sourceText: String = ""
 
     func setDocumentText(_ text: String) {
         sourceText = text
@@ -97,7 +95,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
 
             contentSurface.leadingAnchor.constraint(equalTo: safeArea.leadingAnchor),
             contentSurface.trailingAnchor.constraint(equalTo: safeArea.trailingAnchor),
-            contentSurface.topAnchor.constraint(equalTo: searchBarView.bottomAnchor),
+            contentSurface.topAnchor.constraint(equalTo: contentContainer.topAnchor),
             contentSurface.bottomAnchor.constraint(equalTo: safeArea.bottomAnchor),
 
             sourceController.scrollView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),

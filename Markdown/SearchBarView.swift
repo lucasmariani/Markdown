@@ -39,7 +39,7 @@ final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
 
             countLabel.stringValue = count == 1 ? "1 match" : "\(count) matches"
             countLabel.isHidden = false
-            let fittingWidth = ceil(countLabel.intrinsicContentSize.width)
+            let fittingWidth = ceil(measuredLabelSize().width)
             reservedTrailingWidth = fittingWidth + 10
             needsDisplay = true
             needsLayout = true
@@ -54,10 +54,10 @@ final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
 
             let cancelRect = cancelButtonBounds
             let availableMaxX = max(cancelRect.minX - 6, 0)
-            let labelSize = countLabel.intrinsicContentSize
-            let width = min(labelSize.width, max(availableMaxX - 8, 0))
+            let labelSize = measuredLabelSize()
+            let width = min(ceil(labelSize.width), max(availableMaxX - 8, 0))
             let x = max(availableMaxX - width, 8)
-            let height = countLabel.intrinsicContentSize.height
+            let height = ceil(labelSize.height)
             let y = floor((bounds.height - height) * 0.5)
             countLabel.frame = NSRect(x: x, y: y, width: width, height: height)
         }
@@ -67,9 +67,23 @@ final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
             countLabel.textColor = .secondaryLabelColor
             countLabel.alignment = .right
             countLabel.lineBreakMode = .byTruncatingHead
+            countLabel.maximumNumberOfLines = 1
             countLabel.translatesAutoresizingMaskIntoConstraints = true
             countLabel.isHidden = true
             addSubview(countLabel)
+        }
+
+        private func measuredLabelSize() -> NSSize {
+            if let cell = countLabel.cell {
+                return cell.cellSize(forBounds: NSRect(
+                    x: 0,
+                    y: 0,
+                    width: CGFloat.greatestFiniteMagnitude,
+                    height: bounds.height > 0 ? bounds.height : 28
+                ))
+            }
+
+            return countLabel.fittingSize
         }
 
         private func adjustedSearchTextBounds(_ rect: NSRect) -> NSRect {

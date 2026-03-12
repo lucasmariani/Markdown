@@ -9,6 +9,80 @@ import AppKit
 
 @MainActor
 final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
+    private final class CountAwareSearchField: NSSearchField {
+        private let countLabel = NSTextField(labelWithString: "")
+        private var reservedTrailingWidth: CGFloat = 0
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            configureCountLabel()
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override var searchTextBounds: NSRect {
+            adjustedSearchTextBounds(super.searchTextBounds)
+        }
+
+        func setMatchCount(_ count: Int?) {
+            guard let count else {
+                countLabel.stringValue = ""
+                countLabel.isHidden = true
+                reservedTrailingWidth = 0
+                needsLayout = true
+                needsDisplay = true
+                return
+            }
+
+            countLabel.stringValue = count == 1 ? "1 match" : "\(count) matches"
+            countLabel.isHidden = false
+            let fittingWidth = ceil(countLabel.intrinsicContentSize.width)
+            reservedTrailingWidth = fittingWidth + 10
+            needsDisplay = true
+            needsLayout = true
+        }
+
+        override func layout() {
+            super.layout()
+
+            guard !countLabel.isHidden else {
+                return
+            }
+
+            let cancelRect = cancelButtonBounds
+            let availableMaxX = max(cancelRect.minX - 6, 0)
+            let labelSize = countLabel.intrinsicContentSize
+            let width = min(labelSize.width, max(availableMaxX - 8, 0))
+            let x = max(availableMaxX - width, 8)
+            let height = countLabel.intrinsicContentSize.height
+            let y = floor((bounds.height - height) * 0.5)
+            countLabel.frame = NSRect(x: x, y: y, width: width, height: height)
+        }
+
+        private func configureCountLabel() {
+            countLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            countLabel.textColor = .secondaryLabelColor
+            countLabel.alignment = .right
+            countLabel.lineBreakMode = .byTruncatingHead
+            countLabel.translatesAutoresizingMaskIntoConstraints = true
+            countLabel.isHidden = true
+            addSubview(countLabel)
+        }
+
+        private func adjustedSearchTextBounds(_ rect: NSRect) -> NSRect {
+            guard reservedTrailingWidth > 0 else {
+                return rect
+            }
+
+            var adjustedRect = rect
+            adjustedRect.size.width = max(0, adjustedRect.width - reservedTrailingWidth)
+            return adjustedRect
+        }
+    }
+
     var onQueryChanged: ((String) -> Void)?
     var onSearchRequested: ((Bool) -> Void)?
     var onDoneRequested: (() -> Void)?
@@ -17,7 +91,7 @@ final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
         searchField.stringValue
     }
 
-    private let searchField = NSSearchField()
+    private let searchField = CountAwareSearchField()
     private let previousButton = NSButton()
     private let nextButton = NSButton()
     private let doneButton = NSButton()
@@ -37,6 +111,10 @@ final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
             searchField.stringValue = initialQuery
         }
         searchField.selectText(nil)
+    }
+
+    func setMatchCount(_ count: Int?) {
+        searchField.setMatchCount(count)
     }
 
     private func configureView() {
@@ -94,9 +172,9 @@ final class SearchBarView: NSVisualEffectView, NSSearchFieldDelegate {
             previousButton.centerYAnchor.constraint(equalTo: centerYAnchor),
             previousButton.widthAnchor.constraint(equalToConstant: 28),
 
+            nextButton.widthAnchor.constraint(equalToConstant: 28),
             nextButton.leadingAnchor.constraint(equalTo: previousButton.trailingAnchor, constant: 4),
             nextButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-            nextButton.widthAnchor.constraint(equalToConstant: 28),
 
             doneButton.leadingAnchor.constraint(equalTo: nextButton.trailingAnchor, constant: 10),
             doneButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),

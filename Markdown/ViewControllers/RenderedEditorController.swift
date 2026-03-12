@@ -119,7 +119,53 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
         configuration.backwards = backwards
         configuration.caseSensitive = false
         configuration.wraps = true
-        webView.find(query, configuration: configuration) { _ in }
+        webView.find(query, configuration: configuration) { [weak self] result in
+            guard let self, result.matchFound else {
+                return
+            }
+
+            self.scrollCurrentMatchIntoView()
+        }
+    }
+
+    func countMatches(query: String, completion: @escaping (Int) -> Void) {
+        guard isReady, let webView, !query.isEmpty else {
+            completion(0)
+            return
+        }
+
+        let queryLiteral = javaScriptStringLiteral(query)
+        let script = """
+        (() => {
+          const query = \(queryLiteral);
+          if (!query) {
+            return 0;
+          }
+
+          const editor = document.getElementById('editor');
+          const haystack = (editor?.innerText ?? document.body?.innerText ?? '').toLocaleLowerCase();
+          const needle = query.toLocaleLowerCase();
+
+          let count = 0;
+          let indexStep = Math.max(needle.length, 1);
+          let searchIndex = 0;
+          for (let index = haystack.indexOf(needle, searchIndex); index !== -1; index = haystack.indexOf(needle, index + indexStep)) {
+            count += 1;
+          }
+
+          return count;
+        })()
+        """
+
+        webView.evaluateJavaScript(script) { result, error in
+            if let error {
+                NSLog("Failed to count rendered search results: %@", error.localizedDescription)
+                completion(0)
+                return
+            }
+
+            completion((result as? NSNumber).map { Int(truncating: $0) } ?? 0)
+        }
     }
 
     func clearSearchResults() {
@@ -276,6 +322,68 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
             let height = CGFloat(truncating: value)
             self.layoutDocumentContainer(minimumHeight: height)
         }
+    }
+
+    private func scrollCurrentMatchIntoView() {
+        guard let webView else {
+            return
+        }
+
+        let script = """
+        (() => {
+          const selection = window.getSelection();
+          if (!selection || selection.rangeCount === 0) {
+            return null;
+          }
+
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          if (!rect || (rect.width === 0 && rect.height === 0)) {
+            return null;
+          }
+
+          return {
+            x: rect.left + window.scrollX,
+            y: rect.top + window.scrollY,
+            width: rect.width,
+            height: rect.height
+          };
+        })()
+        """
+
+        webView.evaluateJavaScript(script) { [weak self] result, error in
+            guard let self else {
+                return
+            }
+
+            if let error {
+                NSLog("Failed to locate rendered search result: %@", error.localizedDescription)
+                return
+            }
+
+            guard let matchRect = self.domRect(from: result) else {
+                return
+            }
+
+            let visibleHeight = self.scrollView.contentView.bounds.height
+            let inset = max((visibleHeight - matchRect.height) * 0.5, 24)
+            self.documentContainerView.scrollToVisible(matchRect.insetBy(dx: 0, dy: -inset))
+            self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
+        }
+    }
+
+    private func domRect(from result: Any?) -> NSRect? {
+        guard let dictionary = result as? [String: Any],
+              let x = dictionary["x"] as? Double,
+              let y = dictionary["y"] as? Double,
+              let width = dictionary["width"] as? Double,
+              let height = dictionary["height"] as? Double,
+              let webView else {
+            return nil
+        }
+
+        let rectInWebView = NSRect(x: x, y: y, width: width, height: max(height, 1))
+        return documentContainerView.convert(rectInWebView, from: webView)
     }
 
     private func layoutDocumentContainer(minimumHeight: CGFloat) {

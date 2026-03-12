@@ -23,6 +23,9 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         controller.onTextChanged = { [weak self] text in
             self?.handleSourceTextChanged(text)
         }
+        controller.onTextFinderAction = { [weak self] action in
+            self?.handleSourceTextFinderAction(action) ?? false
+        }
         return controller
     }()
 
@@ -67,13 +70,7 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     }
 
     override func loadView() {
-//        let rootView = NSVisualEffectView()
-//        rootView.material = .underWindowBackground
-//        rootView.state = .active
-//        rootView.translatesAutoresizingMaskIntoConstraints = false
-
         let contentContainer = NSView()
-        contentContainer.translatesAutoresizingMaskIntoConstraints = false
 
         let contentSurface = NSVisualEffectView()
         contentSurface.material = .contentBackground
@@ -91,15 +88,17 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         sourceController.scrollView.translatesAutoresizingMaskIntoConstraints = false
         renderedController.scrollView.translatesAutoresizingMaskIntoConstraints = false
 
-        NSLayoutConstraint.activate([
-            searchBarView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
-            searchBarView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
-            searchBarView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
+        let safeArea = contentContainer.safeAreaLayoutGuide
 
-            contentSurface.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
-            contentSurface.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
+        NSLayoutConstraint.activate([
+            searchBarView.leadingAnchor.constraint(equalTo: safeArea.leadingAnchor),
+            searchBarView.trailingAnchor.constraint(equalTo: safeArea.trailingAnchor),
+            searchBarView.topAnchor.constraint(equalTo: safeArea.topAnchor),
+
+            contentSurface.leadingAnchor.constraint(equalTo: safeArea.leadingAnchor),
+            contentSurface.trailingAnchor.constraint(equalTo: safeArea.trailingAnchor),
             contentSurface.topAnchor.constraint(equalTo: searchBarView.bottomAnchor),
-            contentSurface.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
+            contentSurface.bottomAnchor.constraint(equalTo: safeArea.bottomAnchor),
 
             sourceController.scrollView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
             sourceController.scrollView.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor),
@@ -116,7 +115,6 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
         findBarHeight.isActive = true
         findBarHeightConstraint = findBarHeight
 
-//        rootView.addSubview(contentContainer)
         self.view = contentContainer
         sourceController.scrollView.isHidden = false
         renderedController.scrollView.isHidden = true
@@ -137,31 +135,16 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     }
 
     @objc func focusSearch(_ sender: Any?) {
-        guard currentMode == .rendered else {
-            sourceController.showFindInterface(in: view.window)
-            return
-        }
-
         showFindBar()
         findCoordinator.focusSearch()
     }
 
     @objc func findNext(_ sender: Any?) {
-        guard currentMode == .rendered else {
-            sourceController.performTextFinderAction(.nextMatch, in: view.window)
-            return
-        }
-
         showFindBar()
         performSearch(query: searchBarView.query, backwards: false)
     }
 
     @objc func findPrevious(_ sender: Any?) {
-        guard currentMode == .rendered else {
-            sourceController.performTextFinderAction(.previousMatch, in: view.window)
-            return
-        }
-
         showFindBar()
         performSearch(query: searchBarView.query, backwards: true)
     }
@@ -208,12 +191,17 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
             sourceController.setText(sourceText)
             sourceController.focus(in: view.window)
         }
+
+        if !searchBarView.isHidden {
+            updateSearchMatchCount(for: searchBarView.query)
+        }
     }
 
     private func showFindBar() {
         searchBarView.isHidden = false
         findBarHeightConstraint?.constant = 40
         view.layoutSubtreeIfNeeded()
+        updateSearchMatchCount(for: searchBarView.query)
     }
 
     private func hideFindBar() {
@@ -229,12 +217,18 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func performSearch(query: String, backwards: Bool) {
+        updateSearchMatchCount(for: query)
+
         if currentMode == .rendered {
             renderedController.find(query: query, backwards: backwards)
+        } else {
+            sourceController.find(query: query, backwards: backwards)
         }
     }
 
     private func clearSearch() {
+        searchBarView.setMatchCount(nil)
+
         if currentMode == .rendered {
             renderedController.clearSearchResults()
         }
@@ -243,5 +237,51 @@ final class EditorViewController: NSViewController, NSMenuItemValidation {
     private func handleSourceTextChanged(_ text: String) {
         sourceText = text
         onDocumentTextDidChange?(sourceText)
+
+        if currentMode == .source, !searchBarView.isHidden {
+            updateSearchMatchCount(for: searchBarView.query)
+        }
+    }
+
+    private func handleSourceTextFinderAction(_ action: NSTextFinder.Action) -> Bool {
+        switch action {
+        case .showFindInterface:
+            showFindBar()
+            findCoordinator.focusSearch()
+            return true
+        case .nextMatch:
+            showFindBar()
+            performSearch(query: searchBarView.query, backwards: false)
+            return true
+        case .previousMatch:
+            showFindBar()
+            performSearch(query: searchBarView.query, backwards: true)
+            return true
+        case .hideFindInterface:
+            hideFindBar()
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func updateSearchMatchCount(for query: String) {
+        guard !query.isEmpty else {
+            searchBarView.setMatchCount(nil)
+            return
+        }
+
+        if currentMode == .source {
+            searchBarView.setMatchCount(sourceController.countMatches(query: query))
+            return
+        }
+
+        renderedController.countMatches(query: query) { [weak self] count in
+            guard let self, self.currentMode == .rendered, self.searchBarView.query == query else {
+                return
+            }
+
+            self.searchBarView.setMatchCount(count)
+        }
     }
 }

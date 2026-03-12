@@ -7,10 +7,19 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		037449110D904A16B4797803 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = A01C161F2F58DB1C00081EC9 /* Markdown */; };
+		08637FC3E152421DA97E86FF /* MarkdownQuickLookPreview.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 569197FD0FA84A0BA428471E /* MarkdownQuickLookPreview.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A01C16202F58DB1C00081EC9 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = A01C161F2F58DB1C00081EC9 /* Markdown */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		1F8F0712718041E694C44059 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A01C16082F58D7F200081EC9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B6E6CC8925FE4B23A1EDB58B;
+			remoteInfo = MarkdownQuickLookPreview;
+		};
 		A01C162B2F59000000081EC9 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A01C16082F58D7F200081EC9 /* Project object */;
@@ -20,12 +29,45 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		76128B3083764FAC929A88A1 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				08637FC3E152421DA97E86FF /* MarkdownQuickLookPreview.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		569197FD0FA84A0BA428471E /* MarkdownQuickLookPreview.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MarkdownQuickLookPreview.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A01C16102F58D7F200081EC9 /* Markdown.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Markdown.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A01C16212F59000000081EC9 /* MarkdownTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MarkdownTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		74686E74D5B34BE98A06FC51 /* Exceptions for "MarkdownQuickLookPreview" folder in "MarkdownQuickLookPreview" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B6E6CC8925FE4B23A1EDB58B /* MarkdownQuickLookPreview */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		1A19BF807ED0409AB3DFEC40 /* MarkdownQuickLookPreview */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				74686E74D5B34BE98A06FC51 /* Exceptions for "MarkdownQuickLookPreview" folder in "MarkdownQuickLookPreview" target */,
+			);
+			path = MarkdownQuickLookPreview;
+			sourceTree = "<group>";
+		};
 		A01C16122F58D7F200081EC9 /* Markdown */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Markdown;
@@ -54,6 +96,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D814DFAA48424D3296A1BA6F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				037449110D904A16B4797803 /* Markdown in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -61,6 +111,7 @@
 			isa = PBXGroup;
 			children = (
 				A01C16122F58D7F200081EC9 /* Markdown */,
+				1A19BF807ED0409AB3DFEC40 /* MarkdownQuickLookPreview */,
 				A01C16222F59000000081EC9 /* MarkdownTests */,
 				A01C16112F58D7F200081EC9 /* Products */,
 			);
@@ -70,6 +121,7 @@
 			isa = PBXGroup;
 			children = (
 				A01C16102F58D7F200081EC9 /* Markdown.app */,
+				569197FD0FA84A0BA428471E /* MarkdownQuickLookPreview.appex */,
 				A01C16212F59000000081EC9 /* MarkdownTests.xctest */,
 			);
 			name = Products;
@@ -85,10 +137,12 @@
 				A01C160C2F58D7F200081EC9 /* Sources */,
 				A01C160D2F58D7F200081EC9 /* Frameworks */,
 				A01C160E2F58D7F200081EC9 /* Resources */,
+				76128B3083764FAC929A88A1 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				2AD5C8D6436443AE93F11F7E /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A01C16122F58D7F200081EC9 /* Markdown */,
@@ -124,6 +178,29 @@
 			productReference = A01C16212F59000000081EC9 /* MarkdownTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		B6E6CC8925FE4B23A1EDB58B /* MarkdownQuickLookPreview */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 96CAFD33CA1748838FC38352 /* Build configuration list for PBXNativeTarget "MarkdownQuickLookPreview" */;
+			buildPhases = (
+				C80F7469DD7A4F05AD735EDB /* Sources */,
+				D814DFAA48424D3296A1BA6F /* Frameworks */,
+				723F1F5699B6469C86E36C2C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				1A19BF807ED0409AB3DFEC40 /* MarkdownQuickLookPreview */,
+			);
+			name = MarkdownQuickLookPreview;
+			packageProductDependencies = (
+				A01C161F2F58DB1C00081EC9 /* Markdown */,
+			);
+			productName = MarkdownQuickLookPreview;
+			productReference = 569197FD0FA84A0BA428471E /* MarkdownQuickLookPreview.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -140,6 +217,9 @@
 					A01C16232F59000000081EC9 = {
 						CreatedOnToolsVersion = 26.3;
 						TestTargetID = A01C160F2F58D7F200081EC9;
+					};
+					B6E6CC8925FE4B23A1EDB58B = {
+						CreatedOnToolsVersion = 26.3;
 					};
 				};
 			};
@@ -160,6 +240,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				B6E6CC8925FE4B23A1EDB58B /* MarkdownQuickLookPreview */,
 				A01C160F2F58D7F200081EC9 /* Markdown */,
 				A01C16232F59000000081EC9 /* MarkdownTests */,
 			);
@@ -167,6 +248,13 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		723F1F5699B6469C86E36C2C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A01C160E2F58D7F200081EC9 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -198,9 +286,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C80F7469DD7A4F05AD735EDB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		2AD5C8D6436443AE93F11F7E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B6E6CC8925FE4B23A1EDB58B /* MarkdownQuickLookPreview */;
+			targetProxy = 1F8F0712718041E694C44059 /* PBXContainerItemProxy */;
+		};
 		A01C162A2F59000000081EC9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = A01C160F2F58D7F200081EC9 /* Markdown */;
@@ -209,6 +309,39 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		9DB073CAC346494FA329641B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G23224SBC9;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MarkdownQuickLookPreview/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.0.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown.QuickLookPreview;
+				PRODUCT_MODULE_NAME = MarkdownQuickLookPreview;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
 		A01C16192F58D7F200081EC9 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -355,7 +488,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.0.1;
+				MARKETING_VERSION = 0.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown;
 				PRODUCT_MODULE_NAME = MarkdownApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -396,7 +529,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.0.1;
+				MARKETING_VERSION = 0.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown;
 				PRODUCT_MODULE_NAME = MarkdownApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -471,9 +604,51 @@
 			};
 			name = Release;
 		};
+		BDAC075BA3414D04AFED7B91 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = G23224SBC9;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MarkdownQuickLookPreview/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.0.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown.QuickLookPreview;
+				PRODUCT_MODULE_NAME = MarkdownQuickLookPreview;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		96CAFD33CA1748838FC38352 /* Build configuration list for PBXNativeTarget "MarkdownQuickLookPreview" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9DB073CAC346494FA329641B /* Debug */,
+				BDAC075BA3414D04AFED7B91 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A01C160B2F58D7F200081EC9 /* Build configuration list for PBXProject "Markdown" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

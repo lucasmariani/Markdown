@@ -10,8 +10,8 @@ struct MarkdownDocumentTests {
         let document = MarkdownDocument()
         let markdown = "# Title\n\nBody"
 
-        try document.read(from: Data(markdown.utf8), ofType: "net.daringfireball.markdown")
-        let data = try document.data(ofType: "net.daringfireball.markdown")
+        try document.read(from: Data(markdown.utf8), ofType: "public.markdown")
+        let data = try document.data(ofType: "public.markdown")
 
         #expect(String(decoding: data, as: UTF8.self) == markdown)
     }

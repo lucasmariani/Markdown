@@ -10,7 +10,7 @@ import Synchronization
 
 @MainActor
 final class MarkdownDocument: NSDocument {
-    private nonisolated static let markdownTypeIdentifier = "net.daringfireball.markdown"
+    private nonisolated static let markdownTypeIdentifier = "public.markdown"
     private static let unsavedSubtitle = "Unsaved Markdown Document"
 
     private let textStorage = Mutex("")

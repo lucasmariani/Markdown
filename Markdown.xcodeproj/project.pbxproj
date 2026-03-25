@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 90;
+	objectVersion = 100;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -234,7 +234,7 @@
 			packageReferences = (
 				A01C161E2F58DB1C00081EC9 /* XCRemoteSwiftPackageReference "swift-markdown" */,
 			);
-			preferredProjectObjectVersion = 90;
+			preferredProjectObjectVersion = 100;
 			productRefGroup = A01C16112F58D7F200081EC9 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -314,8 +314,8 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 0.0.2;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown.QuickLookPreview;
 				PRODUCT_MODULE_NAME = MarkdownQuickLookPreview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -481,7 +481,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.0.2;
+				MARKETING_VERSION = 0.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown;
 				PRODUCT_MODULE_NAME = MarkdownApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -523,7 +523,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.0.2;
+				MARKETING_VERSION = 0.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown;
 				PRODUCT_MODULE_NAME = MarkdownApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -618,8 +618,8 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 26.1;
-				MARKETING_VERSION = 0.0.2;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown.QuickLookPreview;
 				PRODUCT_MODULE_NAME = MarkdownQuickLookPreview;
 				PRODUCT_NAME = "$(TARGET_NAME)";

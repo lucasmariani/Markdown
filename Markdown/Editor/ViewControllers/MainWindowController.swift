@@ -15,13 +15,9 @@ final class MainWindowController: NSWindowController {
     }
 
     private enum WindowSizing {
-        static let defaultContentSize = NSSize(width: 1120, height: 860)
+        static let defaultContentSize = NSSize(width: 1000, height: 860)
         static let minimumContentSize = NSSize(width: 760, height: 680)
-        static let maxWidthRatio: CGFloat = 0.85
         static let maxHeightRatio: CGFloat = 0.9
-        static let horizontalPadding: CGFloat = 72
-        static let measuredLineLimit = 400
-        static let tabReplacement = "    "
     }
 
     let editorViewController = EditorViewController()
@@ -52,14 +48,11 @@ final class MainWindowController: NSWindowController {
         availableFrame: NSRect? = NSScreen.main?.visibleFrame
     ) -> NSSize {
         let frame = availableFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 960)
-        let maxWidth = max(floor(frame.width * WindowSizing.maxWidthRatio), WindowSizing.minimumContentSize.width)
         let maxHeight = max(floor(frame.height * WindowSizing.maxHeightRatio), WindowSizing.minimumContentSize.height)
-        let defaultWidth = min(WindowSizing.defaultContentSize.width, maxWidth)
+        let defaultWidth = max(WindowSizing.defaultContentSize.width, WindowSizing.minimumContentSize.width)
         let defaultHeight = min(WindowSizing.defaultContentSize.height, maxHeight)
-        let estimatedWidth = min(estimatedContentWidth(for: initialText), maxWidth)
-        let width = max(defaultWidth, estimatedWidth)
 
-        return NSSize(width: width, height: defaultHeight)
+        return NSSize(width: defaultWidth, height: defaultHeight)
     }
 
     private static func makeWindow(contentViewController: NSViewController, initialText: String) -> NSWindow {
@@ -71,6 +64,7 @@ final class MainWindowController: NSWindowController {
             defer: false
         )
         window.contentMinSize = WindowSizing.minimumContentSize
+        window.preservesContentDuringLiveResize = false
         window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .automatic
         window.contentViewController = contentViewController
@@ -79,27 +73,6 @@ final class MainWindowController: NSWindowController {
         window.titlebarAppearsTransparent = false
         window.styleMask.insert(.fullSizeContentView)
         return window
-    }
-
-    private static func estimatedContentWidth(for text: String) -> CGFloat {
-        let longestLineWidth = text
-            .split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
-            .prefix(WindowSizing.measuredLineLimit)
-            .reduce(CGFloat.zero) { currentMax, line in
-                max(currentMax, measuredLineWidth(String(line)))
-            }
-
-        guard longestLineWidth > 0 else {
-            return WindowSizing.defaultContentSize.width
-        }
-
-        return ceil(longestLineWidth + WindowSizing.horizontalPadding)
-    }
-
-    private static func measuredLineWidth(_ line: String) -> CGFloat {
-        let expandedLine = line.replacingOccurrences(of: "\t", with: WindowSizing.tabReplacement)
-        let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        return (expandedLine as NSString).size(withAttributes: [.font: font]).width
     }
 
     private func makeToolbar() -> NSToolbar {

@@ -12,6 +12,24 @@ final class SourceEditorController: NSObject, NSTextViewDelegate {
     private final class SourceTextView: NSTextView {
         var onTextFinderAction: ((NSTextFinder.Action) -> Bool)?
 
+        override func setFrameSize(_ newSize: NSSize) {
+            super.setFrameSize(newSize)
+
+            guard let textContainer else {
+                return
+            }
+
+            // Keep wrapping in sync with live-resize drags instead of waiting for the drag to finish.
+            textContainer.containerSize = NSSize(width: max(newSize.width, 1), height: CGFloat.greatestFiniteMagnitude)
+            layoutManager?.ensureLayout(for: textContainer)
+            needsDisplay = true
+        }
+
+        override func viewDidEndLiveResize() {
+            super.viewDidEndLiveResize()
+            needsDisplay = true
+        }
+
         override func performTextFinderAction(_ sender: Any?) {
             if let action = Self.textFinderAction(from: sender),
                onTextFinderAction?(action) == true {

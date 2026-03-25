@@ -71,18 +71,20 @@ struct MarkdownDocumentTests {
             availableFrame: NSRect(x: 0, y: 0, width: 1600, height: 1200)
         )
 
-        #expect(size == NSSize(width: 1120, height: 860))
+        #expect(size == NSSize(width: 1000, height: 860))
     }
 
     @Test
-    func recommendedContentSizeExpandsForWideDocumentsAndClampsToScreen() {
+    func recommendedContentSizeIgnoresDocumentTextForWidth() {
         let availableFrame = NSRect(x: 0, y: 0, width: 1600, height: 1200)
-        let baseline = MainWindowController.recommendedContentSize(for: "", availableFrame: availableFrame)
-        let wideDocument = String(repeating: "W", count: 220)
-        let size = MainWindowController.recommendedContentSize(for: wideDocument, availableFrame: availableFrame)
+        let narrow = MainWindowController.recommendedContentSize(for: "", availableFrame: availableFrame)
+        let wide = MainWindowController.recommendedContentSize(
+            for: String(repeating: "W", count: 220),
+            availableFrame: availableFrame
+        )
 
-        #expect(size.width > baseline.width)
-        #expect(size.width == floor(availableFrame.width * 0.85))
-        #expect(size.height == baseline.height)
+        #expect(narrow.width == 1000)
+        #expect(wide.width == 1000)
+        #expect(wide.height == narrow.height)
     }
 }

@@ -63,4 +63,26 @@ struct MarkdownDocumentTests {
 
         #expect(detectedURL == newerArtifactURL)
     }
+
+    @Test
+    func recommendedContentSizeUsesLargerDefaultWindow() {
+        let size = MainWindowController.recommendedContentSize(
+            for: "",
+            availableFrame: NSRect(x: 0, y: 0, width: 1600, height: 1200)
+        )
+
+        #expect(size == NSSize(width: 1120, height: 860))
+    }
+
+    @Test
+    func recommendedContentSizeExpandsForWideDocumentsAndClampsToScreen() {
+        let availableFrame = NSRect(x: 0, y: 0, width: 1600, height: 1200)
+        let baseline = MainWindowController.recommendedContentSize(for: "", availableFrame: availableFrame)
+        let wideDocument = String(repeating: "W", count: 220)
+        let size = MainWindowController.recommendedContentSize(for: wideDocument, availableFrame: availableFrame)
+
+        #expect(size.width > baseline.width)
+        #expect(size.width == floor(availableFrame.width * 0.85))
+        #expect(size.height == baseline.height)
+    }
 }

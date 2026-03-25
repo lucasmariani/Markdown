@@ -41,11 +41,12 @@ final class MarkdownDocument: NSDocument {
 
     override func makeWindowControllers() {
         NSLog("[MarkdownDocument] makeWindowControllers begin")
-        let windowController = MainWindowController()
+        let initialText = storedText()
+        let windowController = MainWindowController(initialText: initialText)
         addWindowController(windowController)
 
         let editor = windowController.editorViewController
-        editor.setDocumentText(storedText())
+        editor.setDocumentText(initialText)
         editor.onDocumentTextDidChange = { [weak self] text in
             self?.applyEditorTextChange(text)
         }

@@ -185,7 +185,7 @@ final class MarkdownDocument: NSDocument {
             return true
         case .saveToOperation, .autosaveElsewhereOperation:
             return false
-        @unknown default:
+        default:
             return false
         }
     }

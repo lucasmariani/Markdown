@@ -17,6 +17,18 @@ struct MarkdownDocumentTests {
     }
 
     @Test
+    func readThenWritePreservesDetectedUTF16DocumentText() throws {
+        let document = MarkdownDocument()
+        let markdown = "# Title\n\nBody with café"
+        let sourceData = try #require(markdown.data(using: .utf16))
+
+        try document.read(from: sourceData, ofType: "public.markdown")
+        let writtenData = try document.data(ofType: "public.markdown")
+
+        #expect(String(data: writtenData, encoding: .utf16) == markdown)
+    }
+
+    @Test
     func updatingFileURLRefreshesWindowSubtitle() async throws {
         let document = MarkdownDocument()
         document.makeWindowControllers()
@@ -86,5 +98,15 @@ struct MarkdownDocumentTests {
         #expect(narrow.width == 1000)
         #expect(wide.width == 1000)
         #expect(wide.height == narrow.height)
+    }
+
+    @Test
+    func renderedShellUsesDocumentDirectoryForRelativeAssets() {
+        let directoryURL = URL(fileURLWithPath: "/tmp/MarkdownTests Assets/", isDirectory: true)
+        let shell = RenderedEditorShellHTML.standard(documentBaseURL: directoryURL)
+
+        #expect(shell.contains("<base href=\"file:///tmp/MarkdownTests%20Assets/\">"))
+        #expect(shell.contains("const localFileRoot = \"file:\\/\\/\\/tmp\\/MarkdownTests%20Assets\\/\";"))
+        #expect(shell.contains("const allowedImageSchemes = new Set(['data:', 'file:', 'http:', 'https:']);"))
     }
 }

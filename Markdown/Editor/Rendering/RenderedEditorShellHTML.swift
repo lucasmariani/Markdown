@@ -9,14 +9,25 @@ import Foundation
 
 enum RenderedEditorShellHTML {
 
-    static let standard = """
-<!doctype html>
-<html>
-<head>
-  <meta charset=\"utf-8\">
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-  <link rel=\"stylesheet\" href=\"RendererPrettyLights.css\">
-  <style>
+    static func standard(documentBaseURL: URL?) -> String {
+        let baseElement = documentBaseURL.map {
+            "<base href=\"\(htmlEscapedAttribute($0.absoluteString))\">"
+        } ?? ""
+        let localFileRootLiteral = javaScriptStringLiteral(for: documentBaseURL?.absoluteString ?? "")
+        let prettyLightsCSS = inlineCSSResource(named: "RendererPrettyLights")
+        let highlighterJavaScript = inlineJavaScriptResource(named: "RendererHighlighter")
+
+        return """
+    <!doctype html>
+    <html>
+    <head>
+      <meta charset=\"utf-8\">
+      <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+      \(baseElement)
+      <style>
+        \(prettyLightsCSS)
+      </style>
+      <style>
     :root {
       color-scheme: light dark;
       --bg: #ffffff;
@@ -140,50 +151,70 @@ enum RenderedEditorShellHTML {
       margin: 0;
     }
 
-  </style>
-</head>
-<body>
-  <article id=\"editor\"></article>
-  <script src=\"RendererHighlighter.js\"></script>
+    </style>
+    </head>
+    <body>
+      <article id=\"editor\"></article>
+      <script>
+        \(highlighterJavaScript)
+      </script>
 
-  <script>
-    (() => {
-      const editor = document.getElementById('editor');
-      const allowedTags = new Set([
-        'a', 'blockquote', 'br', 'code', 'del', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'hr', 'img', 'input', 'li', 'ol', 'p', 'pre', 'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul'
-      ]);
+      <script>
+        (() => {
+          const editor = document.getElementById('editor');
+          const localFileRoot = \(localFileRootLiteral);
+          const allowedTags = new Set([
+            'a', 'blockquote', 'br', 'code', 'del', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            'hr', 'img', 'input', 'li', 'ol', 'p', 'pre', 'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul'
+          ]);
       const allowedAttributes = {
         a: new Set(['href', 'title']),
         code: new Set(['class']),
         img: new Set(['alt', 'src', 'title']),
         input: new Set(['checked', 'disabled', 'type'])
       };
-      const allowedLinkSchemes = new Set(['http:', 'https:', 'mailto:']);
-      const allowedImageSchemes = new Set(['data:', 'http:', 'https:']);
+          const allowedLinkSchemes = new Set(['file:', 'http:', 'https:', 'mailto:']);
+          const allowedImageSchemes = new Set(['data:', 'file:', 'http:', 'https:']);
 
-      function sanitizeLinkValue(value, allowedSchemes) {
-        const trimmed = (value || '').trim();
-        if (!trimmed) {
-          return null;
-        }
+          function isAllowedLocalFileURL(url) {
+            if (!localFileRoot || url.protocol.toLowerCase() !== 'file:') {
+              return false;
+            }
 
-        if (
-          trimmed.startsWith('#') ||
-          trimmed.startsWith('/') ||
-          (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed) && !trimmed.startsWith('//'))
-        ) {
-          return trimmed;
-        }
-
-        try {
-          const resolved = new URL(trimmed, document.baseURI);
-          if (allowedSchemes.has(resolved.protocol.toLowerCase())) {
-            return resolved.href;
+            try {
+              const root = new URL(localFileRoot);
+              const rootPath = decodeURIComponent(root.pathname).replace(/\\/$/, '') + '/';
+              const urlPath = decodeURIComponent(url.pathname);
+              return root.protocol.toLowerCase() === 'file:' && urlPath.startsWith(rootPath);
+            } catch (error) {
+              console.error('isAllowedLocalFileURL failed', error);
+              return false;
+            }
           }
-        } catch (error) {
-          console.error('sanitizeLinkValue failed', error);
-        }
+
+          function sanitizeLinkValue(value, allowedSchemes) {
+            const trimmed = (value || '').trim();
+            if (!trimmed) {
+              return null;
+            }
+
+            if (trimmed.startsWith('#')) {
+              return trimmed;
+            }
+
+            try {
+              const resolved = new URL(trimmed, document.baseURI);
+              const protocol = resolved.protocol.toLowerCase();
+              if (protocol === 'file:' && allowedSchemes.has(protocol) && isAllowedLocalFileURL(resolved)) {
+                return resolved.href;
+              }
+
+              if (protocol !== 'file:' && allowedSchemes.has(protocol)) {
+                return resolved.href;
+              }
+            } catch (error) {
+              console.error('sanitizeLinkValue failed', error);
+            }
 
         return null;
       }
@@ -320,8 +351,45 @@ enum RenderedEditorShellHTML {
         highlightCodeBlocks();
       };
     })();
-  </script>
-</body>
-</html>
-"""
+    </script>
+    </body>
+    </html>
+    """
+    }
+
+    private static func inlineCSSResource(named name: String) -> String {
+        resourceText(named: name, extension: "css")
+            .replacingOccurrences(of: "</style", with: "<\\/style", options: [.caseInsensitive])
+    }
+
+    private static func inlineJavaScriptResource(named name: String) -> String {
+        resourceText(named: name, extension: "js")
+            .replacingOccurrences(of: "</script", with: "<\\/script", options: [.caseInsensitive])
+    }
+
+    private static func resourceText(named name: String, extension fileExtension: String) -> String {
+        guard let url = Bundle.main.url(forResource: name, withExtension: fileExtension),
+              let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return ""
+        }
+
+        return text
+    }
+
+    private static func javaScriptStringLiteral(for string: String) -> String {
+        guard let data = try? JSONEncoder().encode(string),
+              let json = String(data: data, encoding: .utf8) else {
+            return "\"\""
+        }
+
+        return json
+    }
+
+    private static func htmlEscapedAttribute(_ string: String) -> String {
+        string
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
 }

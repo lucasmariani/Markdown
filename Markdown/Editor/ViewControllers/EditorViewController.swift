@@ -30,6 +30,7 @@ final class EditorViewController: NSViewController {
     private let searchController = SearchToolbarController()
     private var currentMode: EditorMode = .source
     private var sourceText: String = ""
+    private var documentBaseURL: URL?
 
     private lazy var sourceController: SourceEditorController = {
         let controller = SourceEditorController()
@@ -76,6 +77,16 @@ final class EditorViewController: NSViewController {
             sourceText = sourceController.currentText()
         }
         return sourceText
+    }
+
+    func setDocumentURL(_ fileURL: URL?) {
+        let baseURL = fileURL?.deletingLastPathComponent()
+        guard documentBaseURL?.standardizedFileURL != baseURL?.standardizedFileURL else {
+            return
+        }
+
+        documentBaseURL = baseURL
+        renderedController.setDocumentBaseURL(baseURL)
     }
 
     // MARK: - NSViewController

@@ -14,6 +14,8 @@ final class MarkdownDocument: NSDocument {
     private static let unsavedSubtitle = "Unsaved Markdown Document"
 
     private let textStorage = Mutex("")
+    private let savedTextStorage = Mutex("")
+    private let textEncodingStorage = Mutex<String.Encoding>(.utf8)
     private let securityScopedURLStorage = Mutex<URL?>(nil)
     private weak var editorViewController: EditorViewController?
     private var hasPresentedRecoveryArtifactAlert = false
@@ -21,6 +23,7 @@ final class MarkdownDocument: NSDocument {
     override var fileURL: URL? {
         didSet {
             MainActor.assumeIsolated {
+                editorViewController?.setDocumentURL(fileURL)
                 updateWindowSubtitle()
                 presentRecoveryArtifactAlertIfNeeded()
             }
@@ -46,6 +49,7 @@ final class MarkdownDocument: NSDocument {
         addWindowController(windowController)
 
         let editor = windowController.editorViewController
+        editor.setDocumentURL(fileURL)
         editor.setDocumentText(initialText)
         editor.onDocumentTextDidChange = { [weak self] text in
             self?.applyEditorTextChange(text)
@@ -59,6 +63,11 @@ final class MarkdownDocument: NSDocument {
 
     override func data(ofType typeName: String) throws -> Data {
         let snapshot = currentTextSnapshot()
+        if let data = snapshot.data(using: storedTextEncoding()) {
+            return data
+        }
+
+        setStoredTextEncoding(.utf8)
         guard let data = snapshot.data(using: .utf8) else {
             throw CocoaError(.fileWriteInapplicableStringEncoding)
         }
@@ -66,11 +75,14 @@ final class MarkdownDocument: NSDocument {
     }
 
     nonisolated override func read(from data: Data, ofType typeName: String) throws {
-        guard let text = String(data: data, encoding: .utf8) else {
+        guard let decodedDocument = Self.decodeDocumentText(from: data) else {
             throw CocoaError(.fileReadCorruptFile)
         }
 
+        let text = decodedDocument.text
         setStoredText(text)
+        setSavedText(text)
+        setStoredTextEncoding(decodedDocument.encoding)
 
         Task { @MainActor [weak self] in
             guard let self else {
@@ -85,7 +97,12 @@ final class MarkdownDocument: NSDocument {
             return
         }
         setStoredText(text)
-        updateChangeCount(.changeDone)
+
+        if text == savedText() {
+            updateChangeCount(.changeCleared)
+        } else {
+            updateChangeCount(.changeDone)
+        }
     }
 
     private func currentTextSnapshot() -> String {
@@ -113,6 +130,51 @@ final class MarkdownDocument: NSDocument {
         textStorage.withLock { value in
             value = text
         }
+    }
+
+    nonisolated private func savedText() -> String {
+        savedTextStorage.withLock { $0 }
+    }
+
+    nonisolated private func setSavedText(_ text: String) {
+        savedTextStorage.withLock { value in
+            value = text
+        }
+    }
+
+    nonisolated private func storedTextEncoding() -> String.Encoding {
+        textEncodingStorage.withLock { $0 }
+    }
+
+    nonisolated private func setStoredTextEncoding(_ encoding: String.Encoding) {
+        textEncodingStorage.withLock { value in
+            value = encoding
+        }
+    }
+
+    nonisolated static func decodeDocumentText(from data: Data) -> (text: String, encoding: String.Encoding)? {
+        var convertedString: NSString?
+        let rawEncoding = NSString.stringEncoding(
+            for: data,
+            encodingOptions: nil,
+            convertedString: &convertedString,
+            usedLossyConversion: nil
+        )
+
+        guard rawEncoding != 0, let convertedString else {
+            return nil
+        }
+
+        return (convertedString as String, String.Encoding(rawValue: rawEncoding))
+    }
+
+    override func writeSafely(
+        to url: URL,
+        ofType typeName: String,
+        for saveOperation: NSDocument.SaveOperationType
+    ) throws {
+        try super.writeSafely(to: url, ofType: typeName, for: saveOperation)
+        setSavedText(storedText())
     }
 
     nonisolated func beginSecurityScopedAccess(to url: URL) {

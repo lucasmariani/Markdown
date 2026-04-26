@@ -35,6 +35,7 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
     private var pendingHeightRefreshWorkItem: DispatchWorkItem?
 
     private var latestMarkdown = ""
+    private var documentBaseURL: URL?
     private var isReady = false
     private var pendingRefresh = false
 
@@ -91,13 +92,7 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
             }
           }
 
-          const editor = document.getElementById('editor');
-          if (editor) {
-            editor.innerHTML = \(htmlLiteral);
-            return 'fallbackInnerHTML';
-          }
-
-        throw new Error('rendered editor element not found');
+          throw new Error('rendered editor sanitizer is unavailable');
         })()
         """
 
@@ -183,6 +178,20 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
         window?.makeFirstResponder(webView)
     }
 
+    func setDocumentBaseURL(_ baseURL: URL?) {
+        guard normalizedURL(documentBaseURL) != normalizedURL(baseURL) else {
+            return
+        }
+
+        documentBaseURL = baseURL
+        guard webView != nil else {
+            return
+        }
+
+        pendingRefresh = true
+        loadShell()
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         isReady = true
         scheduleHeightRefresh()
@@ -215,7 +224,11 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
 
         isReady = false
         layoutDocumentContainer(minimumHeight: max(scrollView.contentView.bounds.height, 1))
-        webView.loadHTMLString(RenderedEditorShellHTML.standard, baseURL: Bundle.main.resourceURL)
+        webView.loadHTMLString(RenderedEditorShellHTML.standard(documentBaseURL: documentBaseURL), baseURL: documentBaseURL ?? Bundle.main.resourceURL)
+    }
+
+    private func normalizedURL(_ url: URL?) -> URL? {
+        url?.standardizedFileURL.resolvingSymlinksInPath()
     }
 
     private func javaScriptStringLiteral(_ string: String) -> String {

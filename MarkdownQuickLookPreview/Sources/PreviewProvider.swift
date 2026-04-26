@@ -15,7 +15,7 @@ final class PreviewProvider: QLPreviewProvider, QLPreviewingController {
     }
 
     func providePreview(for request: QLFilePreviewRequest) async throws -> QLPreviewReply {
-        let markdown = try String(contentsOf: request.fileURL, encoding: .utf8)
+        let markdown = try Self.readMarkdown(at: request.fileURL)
         let html = Self.makePreviewHTML(markdown: markdown, fileURL: request.fileURL)
 
         let reply = QLPreviewReply(
@@ -28,6 +28,23 @@ final class PreviewProvider: QLPreviewProvider, QLPreviewingController {
         }
 
         return reply
+    }
+
+    private static func readMarkdown(at url: URL) throws -> String {
+        let data = try Data(contentsOf: url)
+        var convertedString: NSString?
+        let rawEncoding = NSString.stringEncoding(
+            for: data,
+            encodingOptions: nil,
+            convertedString: &convertedString,
+            usedLossyConversion: nil
+        )
+
+        guard rawEncoding != 0, let convertedString else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+
+        return convertedString as String
     }
 
     private static func makePreviewHTML(markdown: String, fileURL: URL) -> String {

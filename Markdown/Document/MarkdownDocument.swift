@@ -174,7 +174,20 @@ final class MarkdownDocument: NSDocument {
         for saveOperation: NSDocument.SaveOperationType
     ) throws {
         try super.writeSafely(to: url, ofType: typeName, for: saveOperation)
-        setSavedText(storedText())
+        if Self.shouldUpdateSavedText(after: saveOperation) {
+            setSavedText(storedText())
+        }
+    }
+
+    nonisolated static func shouldUpdateSavedText(after saveOperation: NSDocument.SaveOperationType) -> Bool {
+        switch saveOperation {
+        case .saveOperation, .saveAsOperation, .autosaveInPlaceOperation:
+            return true
+        case .saveToOperation, .autosaveElsewhereOperation:
+            return false
+        @unknown default:
+            return false
+        }
     }
 
     nonisolated func beginSecurityScopedAccess(to url: URL) {

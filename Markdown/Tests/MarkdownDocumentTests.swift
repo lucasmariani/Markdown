@@ -29,6 +29,15 @@ struct MarkdownDocumentTests {
     }
 
     @Test
+    func savedTextBaselineOnlyUpdatesForDocumentSaves() {
+        #expect(MarkdownDocument.shouldUpdateSavedText(after: .saveOperation))
+        #expect(MarkdownDocument.shouldUpdateSavedText(after: .saveAsOperation))
+        #expect(MarkdownDocument.shouldUpdateSavedText(after: .autosaveInPlaceOperation))
+        #expect(!MarkdownDocument.shouldUpdateSavedText(after: .saveToOperation))
+        #expect(!MarkdownDocument.shouldUpdateSavedText(after: .autosaveElsewhereOperation))
+    }
+
+    @Test
     func updatingFileURLRefreshesWindowSubtitle() async throws {
         let document = MarkdownDocument()
         document.makeWindowControllers()
@@ -103,10 +112,15 @@ struct MarkdownDocumentTests {
     @Test
     func renderedShellUsesDocumentDirectoryForRelativeAssets() {
         let directoryURL = URL(fileURLWithPath: "/tmp/MarkdownTests Assets/", isDirectory: true)
-        let shell = RenderedEditorShellHTML.standard(documentBaseURL: directoryURL)
+        let shell = RenderedEditorShellHTML.standard(
+            documentBaseURL: directoryURL,
+            localFileResourceScheme: "markdown-local-resource"
+        )
 
         #expect(shell.contains("<base href=\"file:///tmp/MarkdownTests%20Assets/\">"))
         #expect(shell.contains("const localFileRoot = \"file:\\/\\/\\/tmp\\/MarkdownTests%20Assets\\/\";"))
-        #expect(shell.contains("const allowedImageSchemes = new Set(['data:', 'file:', 'http:', 'https:']);"))
+        #expect(shell.contains("const localFileResourceScheme = \"markdown-local-resource\";"))
+        #expect(shell.contains("const allowedImageSchemes = new Set(['data:', 'http:', 'https:']);"))
+        #expect(shell.contains("return `${localFileResourceScheme}://asset?url=${encodeURIComponent(fileURL.href)}`;"))
     }
 }

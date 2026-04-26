@@ -50,7 +50,9 @@ final class PreviewProvider: QLPreviewProvider, QLPreviewingController {
     private static func makePreviewHTML(markdown: String, fileURL: URL) -> String {
         let renderedHTML = HTMLFormatter.format(Document(parsing: markdown))
         let renderedHTMLLiteral = javaScriptStringLiteral(for: renderedHTML)
-        let baseURLAttribute = htmlEscapedAttribute(fileURL.deletingLastPathComponent().absoluteString)
+        let documentDirectoryURL = fileURL.deletingLastPathComponent()
+        let baseURLAttribute = htmlEscapedAttribute(documentDirectoryURL.absoluteString)
+        let localFileRootLiteral = javaScriptStringLiteral(for: documentDirectoryURL.absoluteString)
 
         return """
         <!doctype html>
@@ -189,6 +191,7 @@ final class PreviewProvider: QLPreviewProvider, QLPreviewingController {
             (() => {
               const rawHTML = \(renderedHTMLLiteral);
               const preview = document.getElementById('preview');
+              const localFileRoot = \(localFileRootLiteral);
               const allowedTags = new Set([
                 'a', 'blockquote', 'br', 'code', 'del', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
                 'hr', 'img', 'input', 'li', 'ol', 'p', 'pre', 'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul'
@@ -202,23 +205,40 @@ final class PreviewProvider: QLPreviewProvider, QLPreviewingController {
               const allowedLinkSchemes = new Set(['http:', 'https:', 'mailto:']);
               const allowedImageSchemes = new Set(['data:', 'file:', 'http:', 'https:']);
 
+              function isAllowedLocalFileURL(url) {
+                if (!localFileRoot || url.protocol.toLowerCase() !== 'file:') {
+                  return false;
+                }
+
+                try {
+                  const root = new URL(localFileRoot);
+                  const rootPath = decodeURIComponent(root.pathname).replace(/\\/$/, '') + '/';
+                  const urlPath = decodeURIComponent(url.pathname);
+                  return root.protocol.toLowerCase() === 'file:' && urlPath.startsWith(rootPath);
+                } catch (error) {
+                  console.error('isAllowedLocalFileURL failed', error);
+                  return false;
+                }
+              }
+
               function sanitizeLinkValue(value, allowedSchemes) {
                 const trimmed = (value || '').trim();
                 if (!trimmed) {
                   return null;
                 }
 
-                if (
-                  trimmed.startsWith('#') ||
-                  trimmed.startsWith('/') ||
-                  (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed) && !trimmed.startsWith('//'))
-                ) {
+                if (trimmed.startsWith('#')) {
                   return trimmed;
                 }
 
                 try {
                   const resolved = new URL(trimmed, document.baseURI);
-                  if (allowedSchemes.has(resolved.protocol.toLowerCase())) {
+                  const protocol = resolved.protocol.toLowerCase();
+                  if (protocol === 'file:' && allowedSchemes.has(protocol) && isAllowedLocalFileURL(resolved)) {
+                    return resolved.href;
+                  }
+
+                  if (protocol !== 'file:' && allowedSchemes.has(protocol)) {
                     return resolved.href;
                   }
                 } catch (error) {

@@ -6,7 +6,74 @@
 //
 
 import AppKit
+import UniformTypeIdentifiers
 import WebKit
+
+private final class LocalFileResourceSchemeHandler: NSObject, WKURLSchemeHandler {
+    static let scheme = "markdown-local-resource"
+
+    private let lock = NSLock()
+    private var rootURL: URL?
+
+    func setRootURL(_ url: URL?) {
+        lock.withLock {
+            rootURL = url?.standardizedFileURL.resolvingSymlinksInPath()
+        }
+    }
+
+    func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
+        guard let requestURL = urlSchemeTask.request.url,
+              let fileURL = fileURL(for: requestURL),
+              let data = try? Data(contentsOf: fileURL, options: [.mappedIfSafe]) else {
+            urlSchemeTask.didFailWithError(CocoaError(.fileReadNoSuchFile))
+            return
+        }
+
+        let mimeType = (try? fileURL.resourceValues(forKeys: [.contentTypeKey]))
+            .flatMap(\.contentType)?
+            .preferredMIMEType ?? "application/octet-stream"
+        let response = URLResponse(
+            url: requestURL,
+            mimeType: mimeType,
+            expectedContentLength: data.count,
+            textEncodingName: nil
+        )
+        urlSchemeTask.didReceive(response)
+        urlSchemeTask.didReceive(data)
+        urlSchemeTask.didFinish()
+    }
+
+    func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {
+    }
+
+    private func fileURL(for requestURL: URL) -> URL? {
+        guard let components = URLComponents(url: requestURL, resolvingAgainstBaseURL: false),
+              let encodedFileURL = components.queryItems?.first(where: { $0.name == "url" })?.value,
+              let fileURL = URL(string: encodedFileURL),
+              fileURL.isFileURL else {
+            return nil
+        }
+
+        let resolvedRootURL = lock.withLock { rootURL }
+        guard let resolvedRootURL else {
+            return nil
+        }
+
+        let resolvedFileURL = fileURL.standardizedFileURL.resolvingSymlinksInPath()
+        guard isDescendant(resolvedFileURL, of: resolvedRootURL) else {
+            return nil
+        }
+
+        return resolvedFileURL
+    }
+
+    private func isDescendant(_ fileURL: URL, of rootURL: URL) -> Bool {
+        let rootPath = rootURL.path(percentEncoded: false).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let filePath = fileURL.path(percentEncoded: false).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+        return filePath.hasPrefix(rootPath + "/")
+    }
+}
 
 private final class RenderedWebView: WKWebView {
     override func setFrameSize(_ newSize: NSSize) {
@@ -36,6 +103,7 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
 
     private var latestMarkdown = ""
     private var documentBaseURL: URL?
+    private let localFileSchemeHandler = LocalFileResourceSchemeHandler()
     private var isReady = false
     private var pendingRefresh = false
 
@@ -51,6 +119,8 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
         }
 
         let configuration = WKWebViewConfiguration()
+        localFileSchemeHandler.setRootURL(documentBaseURL)
+        configuration.setURLSchemeHandler(localFileSchemeHandler, forURLScheme: LocalFileResourceSchemeHandler.scheme)
 
         let webView = RenderedWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
@@ -184,6 +254,7 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
         }
 
         documentBaseURL = baseURL
+        localFileSchemeHandler.setRootURL(baseURL)
         guard webView != nil else {
             return
         }
@@ -224,7 +295,13 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
 
         isReady = false
         layoutDocumentContainer(minimumHeight: max(scrollView.contentView.bounds.height, 1))
-        webView.loadHTMLString(RenderedEditorShellHTML.standard(documentBaseURL: documentBaseURL), baseURL: documentBaseURL ?? Bundle.main.resourceURL)
+        webView.loadHTMLString(
+            RenderedEditorShellHTML.standard(
+                documentBaseURL: documentBaseURL,
+                localFileResourceScheme: LocalFileResourceSchemeHandler.scheme
+            ),
+            baseURL: documentBaseURL ?? Bundle.main.resourceURL
+        )
     }
 
     private func normalizedURL(_ url: URL?) -> URL? {

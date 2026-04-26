@@ -9,11 +9,12 @@ import Foundation
 
 enum RenderedEditorShellHTML {
 
-    static func standard(documentBaseURL: URL?) -> String {
+    static func standard(documentBaseURL: URL?, localFileResourceScheme: String) -> String {
         let baseElement = documentBaseURL.map {
             "<base href=\"\(htmlEscapedAttribute($0.absoluteString))\">"
         } ?? ""
         let localFileRootLiteral = javaScriptStringLiteral(for: documentBaseURL?.absoluteString ?? "")
+        let localFileResourceSchemeLiteral = javaScriptStringLiteral(for: localFileResourceScheme)
         let prettyLightsCSS = inlineCSSResource(named: "RendererPrettyLights")
         let highlighterJavaScript = inlineJavaScriptResource(named: "RendererHighlighter")
 
@@ -163,6 +164,7 @@ enum RenderedEditorShellHTML {
         (() => {
           const editor = document.getElementById('editor');
           const localFileRoot = \(localFileRootLiteral);
+          const localFileResourceScheme = \(localFileResourceSchemeLiteral);
           const allowedTags = new Set([
             'a', 'blockquote', 'br', 'code', 'del', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
             'hr', 'img', 'input', 'li', 'ol', 'p', 'pre', 'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul'
@@ -174,7 +176,7 @@ enum RenderedEditorShellHTML {
         input: new Set(['checked', 'disabled', 'type'])
       };
           const allowedLinkSchemes = new Set(['file:', 'http:', 'https:', 'mailto:']);
-          const allowedImageSchemes = new Set(['data:', 'file:', 'http:', 'https:']);
+          const allowedImageSchemes = new Set(['data:', 'http:', 'https:']);
 
           function isAllowedLocalFileURL(url) {
             if (!localFileRoot || url.protocol.toLowerCase() !== 'file:') {
@@ -192,7 +194,11 @@ enum RenderedEditorShellHTML {
             }
           }
 
-          function sanitizeLinkValue(value, allowedSchemes) {
+          function localResourceURL(fileURL) {
+            return `${localFileResourceScheme}://asset?url=${encodeURIComponent(fileURL.href)}`;
+          }
+
+          function sanitizeLinkValue(value, allowedSchemes, options = {}) {
             const trimmed = (value || '').trim();
             if (!trimmed) {
               return null;
@@ -205,8 +211,12 @@ enum RenderedEditorShellHTML {
             try {
               const resolved = new URL(trimmed, document.baseURI);
               const protocol = resolved.protocol.toLowerCase();
-              if (protocol === 'file:' && allowedSchemes.has(protocol) && isAllowedLocalFileURL(resolved)) {
-                return resolved.href;
+              if (protocol === 'file:') {
+                if (!isAllowedLocalFileURL(resolved)) {
+                  return null;
+                }
+
+                return options.rewriteLocalFile ? localResourceURL(resolved) : resolved.href;
               }
 
               if (protocol !== 'file:' && allowedSchemes.has(protocol)) {
@@ -273,7 +283,7 @@ enum RenderedEditorShellHTML {
           }
 
           if (tag === 'img' && name === 'src') {
-            const sanitizedSrc = sanitizeLinkValue(attribute.value, allowedImageSchemes);
+            const sanitizedSrc = sanitizeLinkValue(attribute.value, allowedImageSchemes, { rewriteLocalFile: true });
             if (sanitizedSrc) {
               clean.setAttribute('src', sanitizedSrc);
             }

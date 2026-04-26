@@ -24,6 +24,7 @@
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>public.markdown</string>
+				<string>net.daringfireball.markdown</string>
 			</array>
 			<key>CFBundleTypeName</key>
 			<string>Markdown Document</string>

@@ -121,6 +121,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		5D097AE92F98C38A00B34523 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				5D097AE52F98C38A00B34523 /* AppIntents.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		A01C16072F58D7F200081EC9 = {
 			isa = PBXGroup;
 			children = (
@@ -129,14 +137,6 @@
 				5D097AE92F98C38A00B34523 /* Frameworks */,
 				A01C16112F58D7F200081EC9 /* Products */,
 			);
-			sourceTree = "<group>";
-		};
-		5D097AE92F98C38A00B34523 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				5D097AE52F98C38A00B34523 /* AppIntents.framework */,
-			);
-			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		A01C16112F58D7F200081EC9 /* Products */ = {
@@ -497,7 +497,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.0.4;
+				MARKETING_VERSION = 0.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown;
 				PRODUCT_MODULE_NAME = MarkdownApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -539,7 +539,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.0.4;
+				MARKETING_VERSION = 0.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown;
 				PRODUCT_MODULE_NAME = MarkdownApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";

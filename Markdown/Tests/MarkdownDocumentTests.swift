@@ -17,6 +17,33 @@ struct MarkdownDocumentTests {
     }
 
     @Test
+    func acceptsSystemMarkdownTypeIdentifier() throws {
+        let document = MarkdownDocument()
+        let markdown = "# Title\n\nBody"
+        let systemMarkdownTypeIdentifier = "net.daringfireball.markdown"
+
+        #expect(MarkdownDocument.readableTypes.contains(systemMarkdownTypeIdentifier))
+        #expect(MarkdownDocument.writableTypes.contains(systemMarkdownTypeIdentifier))
+
+        try document.read(from: Data(markdown.utf8), ofType: systemMarkdownTypeIdentifier)
+        let data = try document.data(ofType: systemMarkdownTypeIdentifier)
+
+        #expect(String(decoding: data, as: UTF8.self) == markdown)
+    }
+
+    @Test
+    func appDocumentTypeDeclarationIncludesSystemMarkdownTypeIdentifier() throws {
+        let systemMarkdownTypeIdentifier = "net.daringfireball.markdown"
+        let infoDictionary = try #require(Bundle(for: MarkdownDocument.self).infoDictionary)
+        let documentTypes = try #require(infoDictionary["CFBundleDocumentTypes"] as? [[String: Any]])
+        let contentTypes = documentTypes.flatMap { documentType in
+            documentType["LSItemContentTypes"] as? [String] ?? []
+        }
+
+        #expect(contentTypes.contains(systemMarkdownTypeIdentifier))
+    }
+
+    @Test
     func readThenWritePreservesDetectedUTF16DocumentText() throws {
         let document = MarkdownDocument()
         let markdown = "# Title\n\nBody with café"

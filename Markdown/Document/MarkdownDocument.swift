@@ -11,6 +11,7 @@ import Synchronization
 @MainActor
 final class MarkdownDocument: NSDocument {
     private nonisolated static let markdownTypeIdentifier = "public.markdown"
+    private nonisolated static let daringFireballMarkdownTypeIdentifier = "net.daringfireball.markdown"
     private static let unsavedSubtitle = "Unsaved Markdown Document"
 
     private let textStorage = Mutex("")
@@ -35,11 +36,11 @@ final class MarkdownDocument: NSDocument {
     }
 
     nonisolated override class var readableTypes: [String] {
-        [markdownTypeIdentifier]
+        [markdownTypeIdentifier, daringFireballMarkdownTypeIdentifier]
     }
 
     nonisolated override class var writableTypes: [String] {
-        [markdownTypeIdentifier]
+        [markdownTypeIdentifier, daringFireballMarkdownTypeIdentifier]
     }
 
     override func makeWindowControllers() {

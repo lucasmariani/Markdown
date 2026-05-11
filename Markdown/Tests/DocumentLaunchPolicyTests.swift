@@ -17,6 +17,25 @@ struct DocumentLaunchPolicyTests {
     }
 
     @Test
+    func pendingExplicitOpenSuppressesLaunchAction() {
+        let previousSessionURL = URL(fileURLWithPath: "/tmp/MarkdownTests/previous-session.md")
+
+        let emptyLaunchAction = DocumentLaunchPolicy.actionForLaunch(
+            existingDocumentURLs: [],
+            previousSessionURLs: [],
+            isExplicitDocumentOpenPending: true
+        )
+        let restoreLaunchAction = DocumentLaunchPolicy.actionForLaunch(
+            existingDocumentURLs: [],
+            previousSessionURLs: [previousSessionURL],
+            isExplicitDocumentOpenPending: true
+        )
+
+        #expect(emptyLaunchAction == .none)
+        #expect(restoreLaunchAction == .none)
+    }
+
+    @Test
     func previousSessionDocumentsAreRestoredWithoutDuplicates() {
         let documentURL = URL(fileURLWithPath: "/tmp/MarkdownTests/restored.md")
         let duplicateURL = URL(fileURLWithPath: "/tmp/MarkdownTests/./restored.md")

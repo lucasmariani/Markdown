@@ -11,6 +11,7 @@ import AppKit
 private protocol LaunchSessionDocumentControlling: AnyObject {
     var openDocumentURLs: [URL] { get }
     func presentOpenPanel()
+    func openDocument(at url: URL, completion: @escaping (Bool) -> Void)
     func reopenDocument(at url: URL, completion: @escaping (Bool) -> Void)
 }
 
@@ -23,9 +24,20 @@ extension NSDocumentController: LaunchSessionDocumentControlling {
         openDocument(nil)
     }
 
-    func reopenDocument(at url: URL, completion: @escaping (Bool) -> Void) {
-        let didStartAccessing = url.startAccessingSecurityScopedResource()
+    func openDocument(at url: URL, completion: @escaping (Bool) -> Void) {
+        openMarkdownDocument(at: url, shouldStartSecurityScopedAccess: true, completion: completion)
+    }
 
+    func reopenDocument(at url: URL, completion: @escaping (Bool) -> Void) {
+        openMarkdownDocument(at: url, shouldStartSecurityScopedAccess: true, completion: completion)
+    }
+
+    private func openMarkdownDocument(
+        at url: URL,
+        shouldStartSecurityScopedAccess: Bool,
+        completion: @escaping (Bool) -> Void
+    ) {
+        let didStartAccessing = shouldStartSecurityScopedAccess && url.startAccessingSecurityScopedResource()
         openDocument(withContentsOf: url, display: true) { document, alreadyOpen, error in
             let didOpen = document != nil || alreadyOpen
 
@@ -36,7 +48,7 @@ extension NSDocumentController: LaunchSessionDocumentControlling {
             }
 
             if let error {
-                NSLog("[AppDelegate] failed to reopen %@: %@", url.path(percentEncoded: false), error.localizedDescription)
+                NSLog("[AppDelegate] failed to open %@: %@", url.path(percentEncoded: false), error.localizedDescription)
             }
 
             completion(didOpen)
@@ -49,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let documentController: any LaunchSessionDocumentControlling
     private let launchSessionStore: LaunchSessionStore
     private var hasPerformedInitialLaunchAction = false
+    private var isExplicitDocumentOpenPending = false
 
     override init() {
         self.documentController = NSDocumentController.shared
@@ -103,6 +116,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    func application(_ sender: NSApplication, openFile filename: String) -> Bool {
+        isExplicitDocumentOpenPending = true
+        hasPerformedInitialLaunchAction = true
+
+        let url = URL(fileURLWithPath: filename)
+        documentController.openDocument(at: url) { [weak self] didOpen in
+            self?.isExplicitDocumentOpenPending = false
+        }
+
+        return true
+    }
+
+    func application(_ sender: NSApplication, openFiles filenames: [String]) {
+        guard !filenames.isEmpty else {
+            sender.reply(toOpenOrPrint: .failure)
+            return
+        }
+
+        isExplicitDocumentOpenPending = true
+        hasPerformedInitialLaunchAction = true
+
+        var remainingCount = filenames.count
+        var openedAnyDocument = false
+
+        for filename in filenames {
+            let url = URL(fileURLWithPath: filename)
+            documentController.openDocument(at: url) { [weak self] didOpen in
+                openedAnyDocument = openedAnyDocument || didOpen
+                remainingCount -= 1
+
+                guard remainingCount == 0 else {
+                    return
+                }
+
+                self?.isExplicitDocumentOpenPending = false
+                sender.reply(toOpenOrPrint: openedAnyDocument ? .success : .failure)
+            }
+        }
+    }
+
     private func performInitialLaunchActionIfNeeded() {
         guard !hasPerformedInitialLaunchAction else {
             return
@@ -110,7 +163,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let action = DocumentLaunchPolicy.actionForLaunch(
             existingDocumentURLs: documentController.openDocumentURLs,
-            previousSessionURLs: launchSessionStore.restoredDocumentURLs()
+            previousSessionURLs: launchSessionStore.restoredDocumentURLs(),
+            isExplicitDocumentOpenPending: isExplicitDocumentOpenPending
         )
 
         hasPerformedInitialLaunchAction = true

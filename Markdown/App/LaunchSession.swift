@@ -14,7 +14,15 @@ enum DocumentLaunchAction: Equatable {
 }
 
 enum DocumentLaunchPolicy {
-    static func actionForLaunch(existingDocumentURLs: [URL], previousSessionURLs: [URL]) -> DocumentLaunchAction {
+    static func actionForLaunch(
+        existingDocumentURLs: [URL],
+        previousSessionURLs: [URL],
+        isExplicitDocumentOpenPending: Bool = false
+    ) -> DocumentLaunchAction {
+        if isExplicitDocumentOpenPending {
+            return .none
+        }
+
         if !existingDocumentURLs.isEmpty {
             return .none
         }

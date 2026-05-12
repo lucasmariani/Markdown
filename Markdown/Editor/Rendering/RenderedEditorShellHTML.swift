@@ -439,6 +439,40 @@ enum RenderedEditorShellHTML {
         ));
       }
 
+      function isListElement(element) {
+        if (!(element instanceof HTMLElement)) {
+          return false;
+        }
+
+        const tag = element.tagName.toLowerCase();
+        return tag === 'ul' || tag === 'ol';
+      }
+
+      function isListItemElement(element) {
+        if (!(element instanceof HTMLElement)) {
+          return false;
+        }
+
+        if (element.tagName.toLowerCase() === 'li') {
+          return true;
+        }
+
+        return window.getComputedStyle(element).display === 'list-item';
+      }
+
+      function closestElement(startNode, predicate) {
+        let element = startNode instanceof HTMLElement ? startNode : startNode?.parentElement;
+        while (element && element !== editor) {
+          if (predicate(element)) {
+            return element;
+          }
+
+          element = element.parentElement;
+        }
+
+        return null;
+      }
+
       function serializeChildren(element) {
         return Array.from(element.childNodes)
           .map((child) => serializeNode(child))
@@ -448,7 +482,7 @@ enum RenderedEditorShellHTML {
       function serializeList(list, ordered, depth = 0) {
         const indent = '  '.repeat(depth);
         const items = Array.from(list.children)
-          .filter((child) => child instanceof HTMLElement && child.tagName.toLowerCase() === 'li')
+          .filter((child) => isListItemElement(child))
           .map((item, index) => {
             const marker = ordered ? `${index + 1}. ` : '- ';
             const firstElement = item.firstElementChild;
@@ -534,6 +568,8 @@ enum RenderedEditorShellHTML {
           return serializeList(element, false);
         case 'ol':
           return serializeList(element, true);
+        case 'li':
+          return block(`- ${serializeInlineChildren(element)}`);
         case 'pre': {
           const code = element.querySelector('code');
           const className = code?.className || '';
@@ -550,6 +586,10 @@ enum RenderedEditorShellHTML {
         case 'br':
           return newline;
         default:
+          if (isListItemElement(element)) {
+            return block(`- ${serializeInlineChildren(element)}`);
+          }
+
           if (hasBlockChildren(element)) {
             return serializeChildren(element);
           }
@@ -608,6 +648,20 @@ enum RenderedEditorShellHTML {
         range.selectNodeContents(element);
         selection.removeAllRanges();
         selection.addRange(range);
+      }
+
+      function placeCaretAtEnd(element) {
+        const selection = window.getSelection();
+        if (!selection) {
+          return;
+        }
+
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        savedSelectionRange = range.cloneRange();
       }
 
       function replaceSelectionWithElement(element) {
@@ -680,6 +734,144 @@ enum RenderedEditorShellHTML {
         replaceSelectionWithElement(pre);
       }
 
+      function currentEditorRange() {
+        const selection = window.getSelection();
+        if (
+          selection &&
+          selection.rangeCount > 0 &&
+          editor.contains(selection.anchorNode) &&
+          editor.contains(selection.focusNode)
+        ) {
+          return selection.getRangeAt(0);
+        }
+
+        if (savedSelectionRange && editor.contains(savedSelectionRange.commonAncestorContainer)) {
+          return savedSelectionRange;
+        }
+
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+        return range;
+      }
+
+      function currentEditableBlock(range) {
+        return closestElement(range.startContainer, (element) => (
+          isListItemElement(element) || blockTags.has(element.tagName.toLowerCase())
+        ));
+      }
+
+      function nearestParentList(element) {
+        let current = element?.parentElement;
+        while (current && current !== editor) {
+          if (isListElement(current)) {
+            return current;
+          }
+
+          current = current.parentElement;
+        }
+
+        return null;
+      }
+
+      function appendListItemContents(item, destination) {
+        Array.from(item.childNodes).forEach((child) => {
+          if (child instanceof HTMLElement && isListElement(child)) {
+            return;
+          }
+
+          destination.appendChild(child);
+        });
+      }
+
+      function unwrapList(list) {
+        const fragment = document.createDocumentFragment();
+        const paragraphs = [];
+
+        Array.from(list.children)
+          .filter((child) => isListItemElement(child))
+          .forEach((item) => {
+            const paragraph = document.createElement('p');
+            appendListItemContents(item, paragraph);
+            if (!paragraph.textContent.trim() && paragraph.childNodes.length === 0) {
+              paragraph.appendChild(document.createElement('br'));
+            }
+
+            paragraphs.push(paragraph);
+            fragment.appendChild(paragraph);
+          });
+
+        list.replaceWith(fragment);
+        placeCaretAtEnd(paragraphs[0] || editor);
+      }
+
+      function ensureListItemContent(item) {
+        if (!item.textContent.trim() && item.childNodes.length === 0) {
+          item.appendChild(document.createElement('br'));
+        }
+      }
+
+      function replaceBlockWithList(blockElement, ordered) {
+        const list = document.createElement(ordered ? 'ol' : 'ul');
+        const item = document.createElement('li');
+
+        while (blockElement.firstChild) {
+          item.appendChild(blockElement.firstChild);
+        }
+
+        ensureListItemContent(item);
+        list.appendChild(item);
+        blockElement.replaceWith(list);
+        placeCaretAtEnd(item);
+      }
+
+      function insertListAtRange(range, ordered) {
+        const list = document.createElement(ordered ? 'ol' : 'ul');
+        const item = document.createElement('li');
+
+        if (!range.collapsed) {
+          item.appendChild(range.extractContents());
+        }
+
+        ensureListItemContent(item);
+        list.appendChild(item);
+        range.insertNode(list);
+        placeCaretAtEnd(item);
+      }
+
+      function toggleCurrentBlockList(ordered) {
+        const range = currentEditorRange();
+        const currentListItem = closestElement(range.startContainer, isListItemElement);
+        const parentList = nearestParentList(currentListItem);
+        const targetTag = ordered ? 'ol' : 'ul';
+
+        if (parentList) {
+          if (parentList.tagName.toLowerCase() === targetTag) {
+            unwrapList(parentList);
+          } else {
+            const replacement = document.createElement(targetTag);
+            while (parentList.firstChild) {
+              replacement.appendChild(parentList.firstChild);
+            }
+
+            parentList.replaceWith(replacement);
+            placeCaretAtEnd(currentListItem);
+          }
+
+          scheduleMarkdownDidChange();
+          return;
+        }
+
+        const blockElement = currentEditableBlock(range);
+        if (blockElement) {
+          replaceBlockWithList(blockElement, ordered);
+        } else {
+          insertListAtRange(range, ordered);
+        }
+
+        scheduleMarkdownDidChange();
+      }
+
       function formatCurrentBlock(tagName) {
         document.execCommand('formatBlock', false, tagName);
         scheduleMarkdownDidChange();
@@ -718,12 +910,10 @@ enum RenderedEditorShellHTML {
           insertCodeBlock();
           break;
         case 'unorderedList':
-          document.execCommand('insertUnorderedList');
-          scheduleMarkdownDidChange();
+          toggleCurrentBlockList(false);
           break;
         case 'orderedList':
-          document.execCommand('insertOrderedList');
-          scheduleMarkdownDidChange();
+          toggleCurrentBlockList(true);
           break;
         case 'bold':
           document.execCommand('bold');

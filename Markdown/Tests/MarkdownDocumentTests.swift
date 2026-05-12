@@ -177,6 +177,9 @@ struct MarkdownDocumentTests {
         )
 
         #expect(shell.contains("contenteditable=\"true\""))
+        #expect(shell.contains("spellcheck=\"false\""))
+        #expect(shell.contains("autocorrect=\"off\""))
+        #expect(shell.contains("autocapitalize=\"none\""))
         #expect(shell.contains("window.applyMarkdownFormatting = (command) =>"))
         #expect(shell.contains("function serializeEditorToMarkdown()"))
         #expect(shell.contains("const blockTags = new Set"))
@@ -191,13 +194,42 @@ struct MarkdownDocumentTests {
         #expect(shell.contains("return trimTrailingBlankLines(serializeChildren(editor));"))
         #expect(shell.contains("function trimTrailingBlankLines(markdown)"))
         #expect(shell.contains("window.webkit?.messageHandlers?.renderedEditor"))
+        #expect(shell.contains("function preventMarkdownPunctuationAutocorrection(event)"))
+        #expect(shell.contains("editor.addEventListener('beforeinput', preventMarkdownPunctuationAutocorrection);"))
         #expect(shell.contains("editor.addEventListener('input', scheduleMarkdownDidChange);"))
+    }
+
+    @Test
+    func sourceEditorDisablesAutomaticTextSubstitutions() throws {
+        let sourceEditor = SourceEditorController()
+        let textView = try #require(sourceEditor.scrollView.documentView as? NSTextView)
+
+        #expect(!textView.isAutomaticQuoteSubstitutionEnabled)
+        #expect(!textView.isAutomaticDashSubstitutionEnabled)
+        #expect(!textView.isAutomaticTextReplacementEnabled)
+        #expect(!textView.isAutomaticSpellingCorrectionEnabled)
+        #expect(!textView.isContinuousSpellCheckingEnabled)
+        #expect(!textView.isGrammarCheckingEnabled)
     }
 
     @Test
     func emptyMarkdownListMarkersRenderAsListsWhenMarkerSpaceIsPreserved() {
         #expect(MarkdownRenderer.html(from: "- ").contains("<ul>"))
         #expect(MarkdownRenderer.html(from: "1. ").contains("<ol>"))
+    }
+
+    @Test
+    func markdownRendererPreservesPlainMarkdownPunctuation() {
+        let markdown = #"can't "quoted" 'trait' -- ---"#
+        let html = MarkdownRenderer.html(from: markdown)
+
+        #expect(html.contains(markdown))
+        #expect(!html.contains("\u{2018}"))
+        #expect(!html.contains("\u{2019}"))
+        #expect(!html.contains("\u{201C}"))
+        #expect(!html.contains("\u{201D}"))
+        #expect(!html.contains("\u{2013}"))
+        #expect(!html.contains("\u{2014}"))
     }
 
     @Test

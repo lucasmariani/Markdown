@@ -194,6 +194,9 @@ final class SourceEditorController: NSObject, NSTextViewDelegate {
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isContinuousSpellCheckingEnabled = false
+        textView.isGrammarCheckingEnabled = false
         textView.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
         textView.backgroundColor = .clear
         textView.insertionPointColor = .labelColor

@@ -161,7 +161,7 @@ enum RenderedEditorShellHTML {
     </style>
     </head>
     <body>
-      <article id=\"editor\" contenteditable=\"true\" spellcheck=\"true\" role=\"textbox\" aria-multiline=\"true\"></article>
+      <article id=\"editor\" contenteditable=\"true\" spellcheck=\"false\" autocorrect=\"off\" autocapitalize=\"none\" role=\"textbox\" aria-multiline=\"true\"></article>
       <script>
         \(highlighterJavaScript)
       </script>
@@ -638,6 +638,32 @@ enum RenderedEditorShellHTML {
         emitMarkdownDidChange();
       }
 
+      function plainMarkdownPunctuationReplacement(value) {
+        return (value || '')
+          .replace(/[\\u2018\\u2019\\u201A\\u201B]/g, "'")
+          .replace(/[\\u201C\\u201D\\u201E\\u201F]/g, '"');
+      }
+
+      function preventMarkdownPunctuationAutocorrection(event) {
+        if (
+          !(event instanceof InputEvent) ||
+          event.inputType !== 'insertReplacementText' ||
+          typeof event.data !== 'string' ||
+          event.isComposing
+        ) {
+          return;
+        }
+
+        const replacement = plainMarkdownPunctuationReplacement(event.data);
+        if (replacement === event.data) {
+          return;
+        }
+
+        event.preventDefault();
+        document.execCommand('insertText', false, replacement);
+        scheduleMarkdownDidChange();
+      }
+
       function selectInsertedElement(element) {
         const selection = window.getSelection();
         if (!selection) {
@@ -934,6 +960,7 @@ enum RenderedEditorShellHTML {
       document.addEventListener('selectionchange', rememberSelection);
       editor.addEventListener('keyup', rememberSelection);
       editor.addEventListener('mouseup', rememberSelection);
+      editor.addEventListener('beforeinput', preventMarkdownPunctuationAutocorrection);
       editor.addEventListener('input', scheduleMarkdownDidChange);
       editor.addEventListener('blur', emitMarkdownDidChange);
       editor.addEventListener('paste', (event) => {

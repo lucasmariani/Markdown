@@ -10,7 +10,7 @@ import Markdown
 
 enum MarkdownRenderer {
     static func html(from markdown: String) -> String {
-        let document = Document(parsing: markdown)
+        let document = Document(parsing: markdown, options: [.disableSmartOpts])
         return HTMLFormatter.format(document)
     }
 }

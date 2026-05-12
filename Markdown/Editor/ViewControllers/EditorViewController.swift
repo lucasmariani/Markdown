@@ -26,9 +26,10 @@ final class EditorViewController: NSViewController {
     weak var delegate: EditorViewControllerDelegate?
 
     lazy private(set) var searchControllerToolbarItem = searchController.toolbarItem
+    var editorMode: EditorMode { currentMode }
 
     private let searchController = SearchToolbarController()
-    private var currentMode: EditorMode = .source
+    private var currentMode: EditorMode = .rendered
     private var sourceText: String = ""
     private var documentBaseURL: URL?
 
@@ -111,14 +112,18 @@ final class EditorViewController: NSViewController {
         installConstraints(in: contentContainer, contentSurface: contentSurface)
 
         self.view = contentContainer
-        sourceController.scrollView.isHidden = false
-        renderedController.scrollView.isHidden = true
+        sourceController.scrollView.isHidden = (currentMode == .rendered)
+        renderedController.scrollView.isHidden = (currentMode == .source)
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         sourceController.setText(sourceText)
-        delegate?.editorViewController(self, didChangeMode: .source)
+        if currentMode == .rendered {
+            _ = renderedController.ensureWebView()
+        }
+        updateVisibleEditor(for: currentMode)
+        delegate?.editorViewController(self, didChangeMode: currentMode)
     }
 
     // MARK: - Mode Switching

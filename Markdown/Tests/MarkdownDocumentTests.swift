@@ -214,4 +214,19 @@ struct MarkdownDocumentTests {
         #expect(inlineItem?.view is NSSegmentedControl)
         #expect(listItem?.view is NSSegmentedControl)
     }
+
+    @Test
+    func documentWindowsDefaultToRenderedMode() throws {
+        let windowController = MainWindowController(initialText: "# Title")
+        let toolbar = try #require(windowController.window?.toolbar)
+        let modeItem = try #require(windowController.toolbar(
+            toolbar,
+            itemForItemIdentifier: NSToolbarItem.Identifier("com.rianami.markdown.toolbar.mode"),
+            willBeInsertedIntoToolbar: true
+        ))
+        let modeControl = try #require(modeItem.view as? NSSegmentedControl)
+
+        #expect(windowController.editorViewController.editorMode == .rendered)
+        #expect(modeControl.selectedSegment == EditorViewController.EditorMode.rendered.rawValue)
+    }
 }

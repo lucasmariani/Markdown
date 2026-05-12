@@ -37,8 +37,7 @@ final class MainWindowController: NSWindowController {
         shouldCascadeWindows = true
 
         editorViewController.delegate = self
-        modeControl.selectedSegment = 0
-        updateFormattingControls(for: .source)
+        updateToolbarState(for: editorViewController.editorMode)
 
         NSLog("[MainWindowController] initialized window=%@", String(describing: window))
     }
@@ -188,6 +187,11 @@ final class MainWindowController: NSWindowController {
             blockStylePopUpButton.selectItem(at: 0)
         }
     }
+
+    private func updateToolbarState(for mode: EditorViewController.EditorMode) {
+        modeControl.selectedSegment = mode.rawValue
+        updateFormattingControls(for: mode)
+    }
 }
 
 // MARK: - NSToolbarDelegate
@@ -257,8 +261,7 @@ extension MainWindowController: NSToolbarDelegate {
 
 extension MainWindowController: EditorViewControllerDelegate {
     func editorViewController(_ controller: EditorViewController, didChangeMode mode: EditorViewController.EditorMode) {
-        modeControl.selectedSegment = mode == .rendered ? 1 : 0
-        updateFormattingControls(for: mode)
+        updateToolbarState(for: mode)
     }
 }
 

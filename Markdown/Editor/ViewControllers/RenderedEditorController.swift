@@ -9,6 +9,23 @@ import AppKit
 import UniformTypeIdentifiers
 import WebKit
 
+enum RenderedMarkdownFormattingCommand: String {
+    case paragraph
+    case heading1
+    case heading2
+    case heading3
+    case heading4
+    case heading5
+    case heading6
+    case quote
+    case codeBlock
+    case unorderedList
+    case orderedList
+    case bold
+    case italic
+    case inlineCode
+}
+
 private final class LocalFileResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     static let scheme = "markdown-local-resource"
 
@@ -94,8 +111,24 @@ private final class FlippedDocumentView: NSView {
     override var isFlipped: Bool { true }
 }
 
+private final class RenderedEditorScriptMessageHandler: NSObject, WKScriptMessageHandler {
+    weak var controller: RenderedEditorController?
+
+    init(controller: RenderedEditorController) {
+        self.controller = controller
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        controller?.handleScriptMessage(message)
+    }
+}
+
 @MainActor
 final class RenderedEditorController: NSObject, WKNavigationDelegate {
+    private enum ScriptMessage {
+        static let name = "renderedEditor"
+    }
+
     let scrollView = NSScrollView(frame: .zero)
     private let documentContainerView = FlippedDocumentView(frame: .zero)
     private var webView: WKWebView?
@@ -106,6 +139,8 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
     private let localFileSchemeHandler = LocalFileResourceSchemeHandler()
     private var isReady = false
     private var pendingRefresh = false
+
+    var onMarkdownChanged: ((String) -> Void)?
 
     override init() {
         super.init()
@@ -121,6 +156,10 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
         let configuration = WKWebViewConfiguration()
         localFileSchemeHandler.setRootURL(documentBaseURL)
         configuration.setURLSchemeHandler(localFileSchemeHandler, forURLScheme: LocalFileResourceSchemeHandler.scheme)
+        configuration.userContentController.add(
+            RenderedEditorScriptMessageHandler(controller: self),
+            name: ScriptMessage.name
+        )
 
         let webView = RenderedWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
@@ -172,6 +211,31 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
             }
 
             self?.scheduleHeightRefresh(after: 0.25)
+        }
+    }
+
+    func applyFormatting(_ command: RenderedMarkdownFormattingCommand) {
+        guard isReady, let webView else {
+            return
+        }
+
+        let commandLiteral = javaScriptStringLiteral(command.rawValue)
+        let script = """
+        (() => {
+          if (typeof window.applyMarkdownFormatting !== 'function') {
+            throw new Error('rendered editor formatting is unavailable');
+          }
+
+          window.applyMarkdownFormatting(\(commandLiteral));
+        })()
+        """
+
+        webView.evaluateJavaScript(script) { [weak self] _, error in
+            if let error {
+                NSLog("Failed to apply rendered formatting: %@", error.localizedDescription)
+            }
+
+            self?.scheduleHeightRefresh(after: 0.15)
         }
     }
 
@@ -261,6 +325,20 @@ final class RenderedEditorController: NSObject, WKNavigationDelegate {
 
         pendingRefresh = true
         loadShell()
+    }
+
+    func handleScriptMessage(_ message: WKScriptMessage) {
+        guard message.name == ScriptMessage.name,
+              let payload = message.body as? [String: Any],
+              payload["type"] as? String == "markdownChanged",
+              let markdown = payload["markdown"] as? String,
+              markdown != latestMarkdown else {
+            return
+        }
+
+        latestMarkdown = markdown
+        onMarkdownChanged?(markdown)
+        scheduleHeightRefresh(after: 0.15)
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

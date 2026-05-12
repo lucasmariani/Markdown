@@ -150,4 +150,59 @@ struct MarkdownDocumentTests {
         #expect(shell.contains("const allowedImageSchemes = new Set(['data:', 'http:', 'https:']);"))
         #expect(shell.contains("return `${localFileResourceScheme}://asset?url=${encodeURIComponent(fileURL.href)}`;"))
     }
+
+    @Test
+    func renderedShellExposesEditableMarkdownBridge() {
+        let shell = RenderedEditorShellHTML.standard(
+            documentBaseURL: nil,
+            localFileResourceScheme: "markdown-local-resource"
+        )
+
+        #expect(shell.contains("contenteditable=\"true\""))
+        #expect(shell.contains("window.applyMarkdownFormatting = (command) =>"))
+        #expect(shell.contains("function serializeEditorToMarkdown()"))
+        #expect(shell.contains("return trimTrailingBlankLines(serializeChildren(editor));"))
+        #expect(shell.contains("function trimTrailingBlankLines(markdown)"))
+        #expect(shell.contains("window.webkit?.messageHandlers?.renderedEditor"))
+        #expect(shell.contains("editor.addEventListener('input', scheduleMarkdownDidChange);"))
+    }
+
+    @Test
+    func emptyMarkdownListMarkersRenderAsListsWhenMarkerSpaceIsPreserved() {
+        #expect(MarkdownRenderer.html(from: "- ").contains("<ul>"))
+        #expect(MarkdownRenderer.html(from: "1. ").contains("<ol>"))
+    }
+
+    @Test
+    func toolbarIncludesRenderedFormattingControls() throws {
+        let windowController = MainWindowController()
+        let toolbar = try #require(windowController.window?.toolbar)
+        let defaultIdentifiers = windowController
+            .toolbarDefaultItemIdentifiers(toolbar)
+            .map(\.rawValue)
+
+        #expect(defaultIdentifiers.contains("com.rianami.markdown.toolbar.blockStyle"))
+        #expect(defaultIdentifiers.contains("com.rianami.markdown.toolbar.inlineFormatting"))
+        #expect(defaultIdentifiers.contains("com.rianami.markdown.toolbar.listFormatting"))
+
+        let blockItem = windowController.toolbar(
+            toolbar,
+            itemForItemIdentifier: NSToolbarItem.Identifier("com.rianami.markdown.toolbar.blockStyle"),
+            willBeInsertedIntoToolbar: true
+        )
+        let inlineItem = windowController.toolbar(
+            toolbar,
+            itemForItemIdentifier: NSToolbarItem.Identifier("com.rianami.markdown.toolbar.inlineFormatting"),
+            willBeInsertedIntoToolbar: true
+        )
+        let listItem = windowController.toolbar(
+            toolbar,
+            itemForItemIdentifier: NSToolbarItem.Identifier("com.rianami.markdown.toolbar.listFormatting"),
+            willBeInsertedIntoToolbar: true
+        )
+
+        #expect(blockItem?.view is NSPopUpButton)
+        #expect(inlineItem?.view is NSSegmentedControl)
+        #expect(listItem?.view is NSSegmentedControl)
+    }
 }

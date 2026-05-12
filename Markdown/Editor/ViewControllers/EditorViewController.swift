@@ -44,7 +44,11 @@ final class EditorViewController: NSViewController {
     }()
 
     private lazy var renderedController: RenderedEditorController = {
-        RenderedEditorController()
+        let controller = RenderedEditorController()
+        controller.onMarkdownChanged = { [weak self] markdown in
+            self?.handleRenderedMarkdownChanged(markdown)
+        }
+        return controller
     }()
 
     private lazy var searchCoordinator: SearchCoordinator = {
@@ -170,6 +174,15 @@ final class EditorViewController: NSViewController {
         onDocumentTextDidChange?(sourceText)
 
         if currentMode == .source, searchController.isExpanded {
+            updateSearchMatchCount(for: searchController.query)
+        }
+    }
+
+    private func handleRenderedMarkdownChanged(_ markdown: String) {
+        sourceText = markdown
+        onDocumentTextDidChange?(sourceText)
+
+        if currentMode == .rendered, searchController.isExpanded {
             updateSearchMatchCount(for: searchController.query)
         }
     }
@@ -317,6 +330,14 @@ extension EditorViewController {
     @objc func findPrevious(_ sender: Any?) {
         focusOnSearchItem()
         performSearch(query: searchController.query, backwards: true)
+    }
+
+    func applyMarkdownFormatting(_ command: RenderedMarkdownFormattingCommand) {
+        guard currentMode == .rendered else {
+            return
+        }
+
+        renderedController.applyFormatting(command)
     }
 }
 

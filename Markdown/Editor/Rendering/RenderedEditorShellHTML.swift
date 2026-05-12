@@ -74,6 +74,12 @@ enum RenderedEditorShellHTML {
       background: transparent;
       user-select: text;
       -webkit-user-select: text;
+      caret-color: var(--text);
+      outline: none;
+    }
+
+    #editor:focus {
+      outline: none;
     }
 
     h1, h2, h3, h4, h5, h6 {
@@ -155,7 +161,7 @@ enum RenderedEditorShellHTML {
     </style>
     </head>
     <body>
-      <article id=\"editor\"></article>
+      <article id=\"editor\" contenteditable=\"true\" spellcheck=\"true\" role=\"textbox\" aria-multiline=\"true\"></article>
       <script>
         \(highlighterJavaScript)
       </script>
@@ -177,6 +183,12 @@ enum RenderedEditorShellHTML {
       };
           const allowedLinkSchemes = new Set(['file:', 'http:', 'https:', 'mailto:']);
           const allowedImageSchemes = new Set(['data:', 'http:', 'https:']);
+          const newline = String.fromCharCode(10);
+          const carriageReturn = String.fromCharCode(13);
+          const tab = String.fromCharCode(9);
+          const nonBreakingSpace = String.fromCharCode(160);
+          let isApplyingRemoteDocument = false;
+          let pendingMarkdownChangeTimer = null;
 
           function isAllowedLocalFileURL(url) {
             if (!localFileRoot || url.protocol.toLowerCase() !== 'file:') {
@@ -340,6 +352,379 @@ enum RenderedEditorShellHTML {
         return fragment;
       }
 
+      function normalizeInlineText(value) {
+        return (value || '')
+          .split(nonBreakingSpace).join(' ')
+          .split(carriageReturn).join(' ')
+          .split(newline).join(' ')
+          .split(tab).join(' ')
+          .replace(/  +/g, ' ');
+      }
+
+      function block(markdown) {
+        const trimmed = (markdown || '').trim();
+        return trimmed ? trimmed + newline + newline : '';
+      }
+
+      function serializeInlineChildren(element) {
+        return Array.from(element.childNodes)
+          .map((child) => serializeInlineNode(child))
+          .join('')
+          .replace(/  +/g, ' ')
+          .trim();
+      }
+
+      function serializeInlineNode(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          return normalizeInlineText(node.textContent || '');
+        }
+
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+          return '';
+        }
+
+        const element = node;
+        const tag = element.tagName.toLowerCase();
+
+        if (tag === 'br') {
+          return newline;
+        }
+
+        if (tag === 'img') {
+          const alt = element.getAttribute('alt') || '';
+          const src = element.getAttribute('src') || '';
+          return src ? `![${alt}](${src})` : '';
+        }
+
+        if (tag === 'code' && element.closest('pre')) {
+          return element.textContent || '';
+        }
+
+        const content = serializeInlineChildren(element);
+        if (!content && tag !== 'a') {
+          return '';
+        }
+
+        switch (tag) {
+        case 'strong':
+        case 'b':
+          return `**${content}**`;
+        case 'em':
+        case 'i':
+          return `*${content}*`;
+        case 'code':
+          return '`' + (element.textContent || '').trim() + '`';
+        case 'del':
+        case 's':
+        case 'strike':
+          return `~~${content}~~`;
+        case 'a': {
+          const href = element.getAttribute('href') || '';
+          return href ? `[${content || href}](${href})` : content;
+        }
+        default:
+          return content;
+        }
+      }
+
+      function serializeChildren(element) {
+        return Array.from(element.childNodes)
+          .map((child) => serializeNode(child))
+          .join('');
+      }
+
+      function serializeList(list, ordered, depth = 0) {
+        const indent = '  '.repeat(depth);
+        const items = Array.from(list.children)
+          .filter((child) => child instanceof HTMLElement && child.tagName.toLowerCase() === 'li')
+          .map((item, index) => {
+            const marker = ordered ? `${index + 1}. ` : '- ';
+            const firstElement = item.firstElementChild;
+            const hasTaskCheckbox = firstElement &&
+              firstElement.tagName.toLowerCase() === 'input' &&
+              firstElement.getAttribute('type') === 'checkbox';
+            const taskPrefix = hasTaskCheckbox ? (firstElement.checked ? '[x] ' : '[ ] ') : '';
+            const nestedLists = [];
+            const inlineParts = [];
+
+            Array.from(item.childNodes).forEach((child) => {
+              if (child === firstElement && hasTaskCheckbox) {
+                return;
+              }
+
+              if (child instanceof HTMLElement) {
+                const tag = child.tagName.toLowerCase();
+                if (tag === 'ul' || tag === 'ol') {
+                  nestedLists.push(serializeList(child, tag === 'ol', depth + 1).trimEnd());
+                  return;
+                }
+              }
+
+              inlineParts.push(serializeInlineNode(child));
+            });
+
+            const itemText = inlineParts.join('').replace(/  +/g, ' ').trim();
+            const nestedText = nestedLists.filter(Boolean).join(newline);
+            const firstLine = `${indent}${marker}${taskPrefix}${itemText}`;
+            return nestedText ? `${firstLine}${newline}${nestedText}` : firstLine;
+          });
+
+        return items.length > 0 ? items.join(newline) + newline + newline : '';
+      }
+
+      function serializeTable(table) {
+        const rows = Array.from(table.querySelectorAll('tr')).map((row) => (
+          Array.from(row.children).map((cell) => serializeInlineChildren(cell).trim())
+        ));
+
+        if (rows.length === 0) {
+          return '';
+        }
+
+        const formattedRows = rows.map((cells) => `| ${cells.join(' | ')} |`);
+        if (rows.length === 1) {
+          return formattedRows[0];
+        }
+
+        const separator = `| ${rows[0].map(() => '---').join(' | ')} |`;
+        return [formattedRows[0], separator, ...formattedRows.slice(1)].join(newline);
+      }
+
+      function serializeNode(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          return block(normalizeInlineText(node.textContent || ''));
+        }
+
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+          return '';
+        }
+
+        const element = node;
+        const tag = element.tagName.toLowerCase();
+
+        if (/^h[1-6]$/.test(tag)) {
+          const level = Number(tag.slice(1));
+          return block(`${'#'.repeat(level)} ${serializeInlineChildren(element)}`);
+        }
+
+        switch (tag) {
+        case 'p':
+          return block(serializeInlineChildren(element));
+        case 'blockquote': {
+          const quoted = serializeChildren(element)
+            .trim()
+            .split(newline)
+            .map((line) => `> ${line}`)
+            .join(newline);
+          return block(quoted);
+        }
+        case 'ul':
+          return serializeList(element, false);
+        case 'ol':
+          return serializeList(element, true);
+        case 'pre': {
+          const code = element.querySelector('code');
+          const className = code?.className || '';
+          const language = className
+            .split(' ')
+            .find((name) => name.startsWith('language-'))
+            ?.slice('language-'.length) || '';
+          return '```' + language + newline + (code?.textContent || element.textContent || '') + newline + '```' + newline + newline;
+        }
+        case 'hr':
+          return '---' + newline + newline;
+        case 'table':
+          return block(serializeTable(element));
+        case 'br':
+          return newline;
+        default:
+          return block(serializeInlineChildren(element));
+        }
+      }
+
+      function serializeEditorToMarkdown() {
+        return trimTrailingBlankLines(serializeChildren(editor));
+      }
+
+      function trimTrailingBlankLines(markdown) {
+        const lines = markdown.split(newline);
+        while (lines.length > 0 && lines[lines.length - 1] === '') {
+          lines.pop();
+        }
+
+        return lines.join(newline);
+      }
+
+      function postEditorMessage(payload) {
+        const handler = window.webkit?.messageHandlers?.renderedEditor;
+        if (handler) {
+          handler.postMessage(payload);
+        }
+      }
+
+      function emitMarkdownDidChange() {
+        if (isApplyingRemoteDocument) {
+          return;
+        }
+
+        postEditorMessage({
+          type: 'markdownChanged',
+          markdown: serializeEditorToMarkdown(),
+        });
+      }
+
+      function scheduleMarkdownDidChange() {
+        if (pendingMarkdownChangeTimer) {
+          window.clearTimeout(pendingMarkdownChangeTimer);
+          pendingMarkdownChangeTimer = null;
+        }
+
+        emitMarkdownDidChange();
+      }
+
+      function selectInsertedElement(element) {
+        const selection = window.getSelection();
+        if (!selection) {
+          return;
+        }
+
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+
+      function replaceSelectionWithElement(element) {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) {
+          editor.appendChild(element);
+          selectInsertedElement(element);
+          scheduleMarkdownDidChange();
+          return;
+        }
+
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(element);
+        selectInsertedElement(element);
+        scheduleMarkdownDidChange();
+      }
+
+      function wrapSelectionInInlineElement(tagName, placeholder) {
+        const selection = window.getSelection();
+        const wrapper = document.createElement(tagName);
+
+        if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+          wrapper.textContent = placeholder;
+          replaceSelectionWithElement(wrapper);
+          return;
+        }
+
+        const range = selection.getRangeAt(0);
+        wrapper.appendChild(range.extractContents());
+        range.insertNode(wrapper);
+        selectInsertedElement(wrapper);
+        scheduleMarkdownDidChange();
+      }
+
+      function insertCodeBlock() {
+        const selection = window.getSelection();
+        const pre = document.createElement('pre');
+        const code = document.createElement('code');
+        code.textContent = selection && !selection.isCollapsed ? selection.toString() : 'code';
+        pre.appendChild(code);
+        replaceSelectionWithElement(pre);
+      }
+
+      function formatCurrentBlock(tagName) {
+        document.execCommand('formatBlock', false, tagName);
+        scheduleMarkdownDidChange();
+      }
+
+      window.applyMarkdownFormatting = (command) => {
+        editor.focus();
+
+        switch (command) {
+        case 'paragraph':
+          formatCurrentBlock('p');
+          break;
+        case 'heading1':
+          formatCurrentBlock('h1');
+          break;
+        case 'heading2':
+          formatCurrentBlock('h2');
+          break;
+        case 'heading3':
+          formatCurrentBlock('h3');
+          break;
+        case 'heading4':
+          formatCurrentBlock('h4');
+          break;
+        case 'heading5':
+          formatCurrentBlock('h5');
+          break;
+        case 'heading6':
+          formatCurrentBlock('h6');
+          break;
+        case 'quote':
+          formatCurrentBlock('blockquote');
+          break;
+        case 'codeBlock':
+          insertCodeBlock();
+          break;
+        case 'unorderedList':
+          document.execCommand('insertUnorderedList');
+          scheduleMarkdownDidChange();
+          break;
+        case 'orderedList':
+          document.execCommand('insertOrderedList');
+          scheduleMarkdownDidChange();
+          break;
+        case 'bold':
+          document.execCommand('bold');
+          scheduleMarkdownDidChange();
+          break;
+        case 'italic':
+          document.execCommand('italic');
+          scheduleMarkdownDidChange();
+          break;
+        case 'inlineCode':
+          wrapSelectionInInlineElement('code', 'code');
+          break;
+        default:
+          break;
+        }
+      };
+
+      editor.addEventListener('input', scheduleMarkdownDidChange);
+      editor.addEventListener('blur', emitMarkdownDidChange);
+      editor.addEventListener('paste', (event) => {
+        event.preventDefault();
+        const text = event.clipboardData?.getData('text/plain') || '';
+        document.execCommand('insertText', false, text);
+        scheduleMarkdownDidChange();
+      });
+      editor.addEventListener('click', (event) => {
+        const link = event.target instanceof Element ? event.target.closest('a') : null;
+        if (link && !event.metaKey) {
+          event.preventDefault();
+        }
+      });
+      editor.addEventListener('keydown', (event) => {
+        if (!(event.metaKey || event.ctrlKey)) {
+          return;
+        }
+
+        const key = event.key.toLowerCase();
+        if (key === 'b') {
+          event.preventDefault();
+          window.applyMarkdownFormatting('bold');
+        } else if (key === 'i') {
+          event.preventDefault();
+          window.applyMarkdownFormatting('italic');
+        }
+      });
+
       async function highlightCodeBlocks() {
         if (!window.MarkdownStarryNight || typeof window.MarkdownStarryNight.highlightCodeBlocks !== 'function') {
           return;
@@ -356,8 +741,10 @@ enum RenderedEditorShellHTML {
         const safeHTML = typeof payload === 'string'
           ? payload
           : (typeof payload?.html === 'string' ? payload.html : '');
+        isApplyingRemoteDocument = true;
         editor.replaceChildren();
         editor.appendChild(sanitizedFragment(safeHTML));
+        isApplyingRemoteDocument = false;
         highlightCodeBlocks();
       };
     })();

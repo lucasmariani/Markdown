@@ -10,6 +10,9 @@ import AppKit
 @MainActor
 final class MainWindowController: NSWindowController {
     private enum ToolbarItemID {
+        static let blockStyle = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.blockStyle")
+        static let inlineFormatting = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.inlineFormatting")
+        static let listFormatting = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.listFormatting")
         static let search = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.search")
         static let mode = NSToolbarItem.Identifier("com.rianami.markdown.toolbar.mode")
     }
@@ -22,6 +25,9 @@ final class MainWindowController: NSWindowController {
 
     let editorViewController = EditorViewController()
     private lazy var modeControl: NSSegmentedControl = makeModeControl()
+    private lazy var blockStylePopUpButton: NSPopUpButton = makeBlockStylePopUpButton()
+    private lazy var inlineFormattingControl: NSSegmentedControl = makeInlineFormattingControl()
+    private lazy var listFormattingControl: NSSegmentedControl = makeListFormattingControl()
 
     init(initialText: String = "") {
         let window = Self.makeWindow(contentViewController: editorViewController, initialText: initialText)
@@ -32,6 +38,7 @@ final class MainWindowController: NSWindowController {
 
         editorViewController.delegate = self
         modeControl.selectedSegment = 0
+        updateFormattingControls(for: .source)
 
         NSLog("[MainWindowController] initialized window=%@", String(describing: window))
     }
@@ -104,17 +111,108 @@ final class MainWindowController: NSWindowController {
         control.setWidth(32, forSegment: 1)
         return control
     }
+
+    private func makeBlockStylePopUpButton() -> NSPopUpButton {
+        let button = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 136, height: 28), pullsDown: false)
+        button.target = self
+        button.action = #selector(blockStyleChanged(_:))
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+
+        let styles: [(String, RenderedMarkdownFormattingCommand)] = [
+            ("Paragraph", .paragraph),
+            ("Heading 1", .heading1),
+            ("Heading 2", .heading2),
+            ("Heading 3", .heading3),
+            ("Heading 4", .heading4),
+            ("Heading 5", .heading5),
+            ("Heading 6", .heading6),
+            ("Quote", .quote),
+            ("Code Block", .codeBlock),
+        ]
+
+        for (title, command) in styles {
+            button.addItem(withTitle: title)
+            button.lastItem?.representedObject = command.rawValue
+        }
+
+        return button
+    }
+
+    private func makeInlineFormattingControl() -> NSSegmentedControl {
+        let control = NSSegmentedControl(
+            images: [
+                symbolImage(named: "bold", accessibilityDescription: "Bold"),
+                symbolImage(named: "italic", accessibilityDescription: "Italic"),
+                symbolImage(named: "curlybraces", accessibilityDescription: "Inline Code"),
+            ],
+            trackingMode: .momentary,
+            target: self,
+            action: #selector(inlineFormattingChanged(_:))
+        )
+        control.segmentStyle = .texturedRounded
+        for index in 0..<control.segmentCount {
+            control.setWidth(32, forSegment: index)
+        }
+        return control
+    }
+
+    private func makeListFormattingControl() -> NSSegmentedControl {
+        let control = NSSegmentedControl(
+            images: [
+                symbolImage(named: "list.bullet", accessibilityDescription: "Bulleted List"),
+                symbolImage(named: "list.number", accessibilityDescription: "Numbered List"),
+            ],
+            trackingMode: .momentary,
+            target: self,
+            action: #selector(listFormattingChanged(_:))
+        )
+        control.segmentStyle = .texturedRounded
+        for index in 0..<control.segmentCount {
+            control.setWidth(32, forSegment: index)
+        }
+        return control
+    }
+
+    private func symbolImage(named name: String, accessibilityDescription: String) -> NSImage {
+        NSImage(systemSymbolName: name, accessibilityDescription: accessibilityDescription) ?? NSImage()
+    }
+
+    private func updateFormattingControls(for mode: EditorViewController.EditorMode) {
+        let isRendered = mode == .rendered
+        blockStylePopUpButton.isEnabled = isRendered
+        inlineFormattingControl.isEnabled = isRendered
+        listFormattingControl.isEnabled = isRendered
+
+        if !isRendered {
+            blockStylePopUpButton.selectItem(at: 0)
+        }
+    }
 }
 
 // MARK: - NSToolbarDelegate
 
 extension MainWindowController: NSToolbarDelegate {
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, ToolbarItemID.search, ToolbarItemID.mode]
+        [
+            .flexibleSpace,
+            ToolbarItemID.blockStyle,
+            ToolbarItemID.inlineFormatting,
+            ToolbarItemID.listFormatting,
+            ToolbarItemID.search,
+            ToolbarItemID.mode,
+        ]
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, ToolbarItemID.search, ToolbarItemID.mode]
+        [
+            ToolbarItemID.blockStyle,
+            ToolbarItemID.inlineFormatting,
+            ToolbarItemID.listFormatting,
+            .flexibleSpace,
+            ToolbarItemID.search,
+            ToolbarItemID.mode,
+        ]
     }
 
     func toolbar(
@@ -123,6 +221,24 @@ extension MainWindowController: NSToolbarDelegate {
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         switch itemIdentifier {
+        case ToolbarItemID.blockStyle:
+            let item = NSToolbarItem(itemIdentifier: ToolbarItemID.blockStyle)
+            item.label = "Block Style"
+            item.paletteLabel = "Block Style"
+            item.view = blockStylePopUpButton
+            return item
+        case ToolbarItemID.inlineFormatting:
+            let item = NSToolbarItem(itemIdentifier: ToolbarItemID.inlineFormatting)
+            item.label = "Inline Formatting"
+            item.paletteLabel = "Inline Formatting"
+            item.view = inlineFormattingControl
+            return item
+        case ToolbarItemID.listFormatting:
+            let item = NSToolbarItem(itemIdentifier: ToolbarItemID.listFormatting)
+            item.label = "Lists"
+            item.paletteLabel = "Lists"
+            item.view = listFormattingControl
+            return item
         case ToolbarItemID.search:
             return editorViewController.searchControllerToolbarItem
         case ToolbarItemID.mode:
@@ -142,6 +258,7 @@ extension MainWindowController: NSToolbarDelegate {
 extension MainWindowController: EditorViewControllerDelegate {
     func editorViewController(_ controller: EditorViewController, didChangeMode mode: EditorViewController.EditorMode) {
         modeControl.selectedSegment = mode == .rendered ? 1 : 0
+        updateFormattingControls(for: mode)
     }
 }
 
@@ -155,6 +272,54 @@ extension MainWindowController {
             editorViewController.showRendered(sender)
         default:
             editorViewController.showSource(sender)
+        }
+    }
+
+    @objc
+    private func blockStyleChanged(_ sender: NSPopUpButton) {
+        guard let rawValue = sender.selectedItem?.representedObject as? String,
+              let command = RenderedMarkdownFormattingCommand(rawValue: rawValue) else {
+            return
+        }
+
+        editorViewController.applyMarkdownFormatting(command)
+    }
+
+    @objc
+    private func inlineFormattingChanged(_ sender: NSSegmentedControl) {
+        let command: RenderedMarkdownFormattingCommand?
+
+        switch sender.selectedSegment {
+        case 0:
+            command = .bold
+        case 1:
+            command = .italic
+        case 2:
+            command = .inlineCode
+        default:
+            command = nil
+        }
+
+        if let command {
+            editorViewController.applyMarkdownFormatting(command)
+        }
+    }
+
+    @objc
+    private func listFormattingChanged(_ sender: NSSegmentedControl) {
+        let command: RenderedMarkdownFormattingCommand?
+
+        switch sender.selectedSegment {
+        case 0:
+            command = .unorderedList
+        case 1:
+            command = .orderedList
+        default:
+            command = nil
+        }
+
+        if let command {
+            editorViewController.applyMarkdownFormatting(command)
         }
     }
 }

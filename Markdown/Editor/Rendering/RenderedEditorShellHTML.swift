@@ -187,8 +187,13 @@ enum RenderedEditorShellHTML {
           const carriageReturn = String.fromCharCode(13);
           const tab = String.fromCharCode(9);
           const nonBreakingSpace = String.fromCharCode(160);
+          const blockTags = new Set([
+            'blockquote', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            'hr', 'ol', 'p', 'pre', 'table', 'ul'
+          ]);
           let isApplyingRemoteDocument = false;
           let pendingMarkdownChangeTimer = null;
+          let savedSelectionRange = null;
 
           function isAllowedLocalFileURL(url) {
             if (!localFileRoot || url.protocol.toLowerCase() !== 'file:') {
@@ -427,6 +432,13 @@ enum RenderedEditorShellHTML {
         }
       }
 
+      function hasBlockChildren(element) {
+        return Array.from(element.children).some((child) => (
+          child instanceof HTMLElement &&
+          blockTags.has(child.tagName.toLowerCase())
+        ));
+      }
+
       function serializeChildren(element) {
         return Array.from(element.childNodes)
           .map((child) => serializeNode(child))
@@ -538,6 +550,10 @@ enum RenderedEditorShellHTML {
         case 'br':
           return newline;
         default:
+          if (hasBlockChildren(element)) {
+            return serializeChildren(element);
+          }
+
           return block(serializeInlineChildren(element));
         }
       }
@@ -610,6 +626,34 @@ enum RenderedEditorShellHTML {
         scheduleMarkdownDidChange();
       }
 
+      function rememberSelection() {
+        const selection = window.getSelection();
+        if (
+          !selection ||
+          selection.rangeCount === 0 ||
+          !editor.contains(selection.anchorNode) ||
+          !editor.contains(selection.focusNode)
+        ) {
+          return;
+        }
+
+        savedSelectionRange = selection.getRangeAt(0).cloneRange();
+      }
+
+      function restoreSelection() {
+        if (!savedSelectionRange) {
+          return;
+        }
+
+        const selection = window.getSelection();
+        if (!selection) {
+          return;
+        }
+
+        selection.removeAllRanges();
+        selection.addRange(savedSelectionRange);
+      }
+
       function wrapSelectionInInlineElement(tagName, placeholder) {
         const selection = window.getSelection();
         const wrapper = document.createElement(tagName);
@@ -643,6 +687,7 @@ enum RenderedEditorShellHTML {
 
       window.applyMarkdownFormatting = (command) => {
         editor.focus();
+        restoreSelection();
 
         switch (command) {
         case 'paragraph':
@@ -696,6 +741,9 @@ enum RenderedEditorShellHTML {
         }
       };
 
+      document.addEventListener('selectionchange', rememberSelection);
+      editor.addEventListener('keyup', rememberSelection);
+      editor.addEventListener('mouseup', rememberSelection);
       editor.addEventListener('input', scheduleMarkdownDidChange);
       editor.addEventListener('blur', emitMarkdownDidChange);
       editor.addEventListener('paste', (event) => {

@@ -13,6 +13,14 @@ protocol EditorViewControllerDelegate: AnyObject {
     func editorViewController(_ controller: EditorViewController, didChangeMode mode: EditorViewController.EditorMode)
 }
 
+struct EditorScrollPosition: Equatable {
+    let verticalFraction: CGFloat
+
+    init(verticalFraction: CGFloat) {
+        self.verticalFraction = min(max(verticalFraction, 0), 1)
+    }
+}
+
 @MainActor
 final class EditorViewController: NSViewController {
     // The segmented toolbar control uses these raw values directly.
@@ -133,6 +141,7 @@ final class EditorViewController: NSViewController {
             return
         }
 
+        let previousScrollPosition = scrollPosition(for: currentMode)
         guard prepareModeChange(to: mode) else {
             delegate?.editorViewController(self, didChangeMode: .source)
             return
@@ -140,6 +149,7 @@ final class EditorViewController: NSViewController {
 
         currentMode = mode
         updateVisibleEditor(for: mode)
+        restoreScrollPosition(previousScrollPosition, for: mode)
         delegate?.editorViewController(self, didChangeMode: mode)
         refreshSearchCountIfNeeded()
     }
@@ -294,6 +304,39 @@ final class EditorViewController: NSViewController {
         }
     }
 
+    private func scrollPosition(for mode: EditorMode) -> EditorScrollPosition {
+        switch mode {
+        case .source:
+            sourceController.scrollView.editorScrollPosition()
+        case .rendered:
+            renderedController.scrollView.editorScrollPosition()
+        }
+    }
+
+    private func restoreScrollPosition(_ position: EditorScrollPosition, for mode: EditorMode) {
+        applyScrollPosition(position, for: mode)
+
+        DispatchQueue.main.async { [weak self] in
+            self?.applyScrollPosition(position, for: mode)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard self?.currentMode == mode else {
+                return
+            }
+
+            self?.applyScrollPosition(position, for: mode)
+        }
+    }
+
+    private func applyScrollPosition(_ position: EditorScrollPosition, for mode: EditorMode) {
+        switch mode {
+        case .source:
+            sourceController.scrollView.applyEditorScrollPosition(position)
+        case .rendered:
+            renderedController.scrollView.applyEditorScrollPosition(position)
+        }
+    }
+
     private func focusActiveEditor() {
         switch currentMode {
         case .source:
@@ -309,6 +352,50 @@ final class EditorViewController: NSViewController {
         }
 
         updateSearchMatchCount(for: searchController.query)
+    }
+}
+
+@MainActor
+extension NSScrollView {
+    func editorScrollPosition() -> EditorScrollPosition {
+        guard let documentView else {
+            return EditorScrollPosition(verticalFraction: 0)
+        }
+
+        let visibleRect = contentView.bounds
+        let scrollableHeight = max(documentView.bounds.height - visibleRect.height, 0)
+        guard scrollableHeight > 0 else {
+            return EditorScrollPosition(verticalFraction: 0)
+        }
+
+        if let verticalScroller {
+            return EditorScrollPosition(verticalFraction: CGFloat(verticalScroller.doubleValue))
+        }
+
+        let visualTopOffset = documentView.isFlipped
+            ? visibleRect.minY
+            : scrollableHeight - visibleRect.minY
+        return EditorScrollPosition(verticalFraction: visualTopOffset / scrollableHeight)
+    }
+
+    func applyEditorScrollPosition(_ position: EditorScrollPosition) {
+        guard let documentView else {
+            return
+        }
+
+        let visibleRect = contentView.bounds
+        let scrollableHeight = max(documentView.bounds.height - visibleRect.height, 0)
+        guard scrollableHeight > 0 else {
+            return
+        }
+
+        let visualTopOffset = scrollableHeight * position.verticalFraction
+        let originY = documentView.isFlipped
+            ? visualTopOffset
+            : scrollableHeight - visualTopOffset
+        let boundedOriginY = min(max(originY, 0), scrollableHeight)
+        contentView.scroll(to: NSPoint(x: visibleRect.minX, y: boundedOriginY))
+        reflectScrolledClipView(contentView)
     }
 }
 

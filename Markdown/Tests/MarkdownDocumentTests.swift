@@ -3,6 +3,24 @@ import Foundation
 import Testing
 @testable import MarkdownApp
 
+private final class TestScrollDocumentView: NSView {
+    private let usesFlippedCoordinates: Bool
+
+    override var isFlipped: Bool {
+        usesFlippedCoordinates
+    }
+
+    init(frame: NSRect, isFlipped: Bool) {
+        usesFlippedCoordinates = isFlipped
+        super.init(frame: frame)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
 @MainActor
 struct MarkdownDocumentTests {
     @Test
@@ -228,5 +246,58 @@ struct MarkdownDocumentTests {
 
         #expect(windowController.editorViewController.editorMode == .rendered)
         #expect(modeControl.selectedSegment == EditorViewController.EditorMode.rendered.rawValue)
+    }
+
+    @Test
+    func editorScrollPositionRoundTripsForFlippedViews() {
+        let scrollView = testScrollView(isDocumentFlipped: true)
+        let scrollableHeight = testScrollableHeight(in: scrollView)
+
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: scrollableHeight * 0.5))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+
+        #expect(abs(scrollView.editorScrollPosition().verticalFraction - 0.5) < 0.001)
+
+        scrollView.applyEditorScrollPosition(EditorScrollPosition(verticalFraction: 0.75))
+
+        #expect(abs(scrollView.contentView.bounds.minY - (scrollableHeight * 0.75)) < 0.001)
+    }
+
+    @Test
+    func editorScrollPositionRoundTripsForUnflippedViews() {
+        let scrollView = testScrollView(isDocumentFlipped: false)
+        let scrollableHeight = testScrollableHeight(in: scrollView)
+
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: scrollableHeight * 0.25))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+
+        #expect(abs(scrollView.editorScrollPosition().verticalFraction - 0.75) < 0.001)
+
+        scrollView.applyEditorScrollPosition(EditorScrollPosition(verticalFraction: 0.25))
+
+        #expect(abs(scrollView.contentView.bounds.minY - (scrollableHeight * 0.75)) < 0.001)
+    }
+
+    @Test
+    func editorScrollPositionClampsInvalidFractions() {
+        #expect(EditorScrollPosition(verticalFraction: -0.5).verticalFraction == 0)
+        #expect(EditorScrollPosition(verticalFraction: 1.5).verticalFraction == 1)
+    }
+
+    private func testScrollView(isDocumentFlipped: Bool) -> NSScrollView {
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        scrollView.documentView = TestScrollDocumentView(
+            frame: NSRect(x: 0, y: 0, width: 100, height: 1000),
+            isFlipped: isDocumentFlipped
+        )
+        return scrollView
+    }
+
+    private func testScrollableHeight(in scrollView: NSScrollView) -> CGFloat {
+        guard let documentView = scrollView.documentView else {
+            return 0
+        }
+
+        return max(documentView.bounds.height - scrollView.contentView.bounds.height, 0)
     }
 }

@@ -259,6 +259,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let exportItem = fileMenu.addItem(withTitle: "Export…", action: #selector(NSDocument.saveTo(_:)), keyEquivalent: "")
         exportItem.target = nil
 
+        let exportPDFItem = fileMenu.addItem(withTitle: "Export as PDF…", action: #selector(EditorViewController.exportPDF(_:)), keyEquivalent: "")
+        exportPDFItem.target = nil
+
+        let exportEPUBItem = fileMenu.addItem(withTitle: "Export as EPUB…", action: #selector(EditorViewController.exportEPUB(_:)), keyEquivalent: "")
+        exportEPUBItem.target = nil
+
         let saveAllItem = fileMenu.addItem(withTitle: "Save All", action: #selector(NSDocumentController.saveAllDocuments(_:)), keyEquivalent: "S")
         saveAllItem.keyEquivalentModifierMask = [.command, .option]
         saveAllItem.target = nil

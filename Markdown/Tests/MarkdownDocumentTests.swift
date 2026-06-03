@@ -233,6 +233,81 @@ struct MarkdownDocumentTests {
     }
 
     @Test
+    func exportHTMLPreservesAsciiDrawingWhitespaceInCodeBlocks() {
+        let css = MarkdownExportHTML.sharedCSS
+
+        #expect(css.contains("font-variant-ligatures: none;"))
+        #expect(css.contains("white-space: pre;"))
+        #expect(css.contains("overflow-x: auto;"))
+        #expect(css.contains("tab-size: 4;"))
+    }
+
+    @Test
+    func nativePDFExporterWritesPDFFile() async throws {
+        let fileManager = FileManager.default
+        let directoryURL = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directoryURL) }
+
+        let outputURL = directoryURL.appendingPathComponent("export.pdf")
+        try await MarkdownPDFExporter.export(
+            markdown: """
+            # Export
+
+            ```text
+            +----+
+            | OK |
+            +----+
+            ```
+            """,
+            title: "Export",
+            documentBaseURL: nil,
+            to: outputURL
+        )
+
+        let data = try Data(contentsOf: outputURL)
+        #expect(data.starts(with: Data("%PDF".utf8)))
+    }
+
+    @Test
+    func pandocEPUBArgumentsPreserveWrappingAndResourcePath() {
+        let cssURL = URL(fileURLWithPath: "/tmp/export.css")
+        let outputURL = URL(fileURLWithPath: "/tmp/book.epub")
+        let baseURL = URL(fileURLWithPath: "/tmp/Markdown Assets", isDirectory: true)
+
+        let arguments = PandocEPUBExporter.arguments(
+            title: "Book",
+            cssURL: cssURL,
+            documentBaseURL: baseURL,
+            outputURL: outputURL
+        )
+
+        #expect(arguments.contains("--wrap=preserve"))
+        #expect(arguments.contains("gfm+raw_html"))
+        #expect(arguments.contains("--resource-path"))
+        #expect(arguments.contains(baseURL.path))
+        #expect(arguments.last == "-")
+    }
+
+    @Test
+    func pandocExecutableSearchUsesPATHBeforeCommonInstallLocations() throws {
+        let fileManager = FileManager.default
+        let directoryURL = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directoryURL) }
+
+        let pandocURL = directoryURL.appendingPathComponent("pandoc")
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: pandocURL)
+        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: pandocURL.path)
+
+        let foundURL = PandocEPUBExporter.pandocExecutableURL(environment: ["PATH": directoryURL.path])
+
+        #expect(foundURL == pandocURL)
+    }
+
+    @Test
     func toolbarIncludesRenderedFormattingControls() throws {
         let windowController = MainWindowController()
         let toolbar = try #require(windowController.window?.toolbar)

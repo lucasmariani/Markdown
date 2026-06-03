@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import UniformTypeIdentifiers
 
 // Keeps the AppKit document editors and the toolbar search UI in sync.
 @MainActor
@@ -39,6 +40,7 @@ final class EditorViewController: NSViewController {
     private let searchController = SearchToolbarController()
     private var currentMode: EditorMode = .rendered
     private var sourceText: String = ""
+    private var documentURL: URL?
     private var documentBaseURL: URL?
 
     private lazy var sourceController: SourceEditorController = {
@@ -93,6 +95,7 @@ final class EditorViewController: NSViewController {
     }
 
     func setDocumentURL(_ fileURL: URL?) {
+        documentURL = fileURL
         let baseURL = fileURL?.deletingLastPathComponent()
         guard documentBaseURL?.standardizedFileURL != baseURL?.standardizedFileURL else {
             return
@@ -402,6 +405,38 @@ extension NSScrollView {
 // MARK: - Menu Actions
 
 extension EditorViewController {
+    private enum ExportFormat {
+        case pdf
+        case epub
+
+        var panelTitle: String {
+            switch self {
+            case .pdf:
+                "Export as PDF"
+            case .epub:
+                "Export as EPUB"
+            }
+        }
+
+        var fileExtension: String {
+            switch self {
+            case .pdf:
+                "pdf"
+            case .epub:
+                "epub"
+            }
+        }
+
+        var contentType: UTType {
+            switch self {
+            case .pdf:
+                .pdf
+            case .epub:
+                UTType(filenameExtension: "epub") ?? .data
+            }
+        }
+    }
+
     @objc func showRendered(_ sender: Any?) {
         setMode(.rendered)
     }
@@ -424,12 +459,112 @@ extension EditorViewController {
         performSearch(query: searchController.query, backwards: true)
     }
 
+    @objc func exportPDF(_ sender: Any?) {
+        presentExportPanel(for: .pdf)
+    }
+
+    @objc func exportEPUB(_ sender: Any?) {
+        presentExportPanel(for: .epub)
+    }
+
     func applyMarkdownFormatting(_ command: RenderedMarkdownFormattingCommand) {
         guard currentMode == .rendered else {
             return
         }
 
         renderedController.applyFormatting(command)
+    }
+
+    private func presentExportPanel(for format: ExportFormat) {
+        let panel = NSSavePanel()
+        panel.title = format.panelTitle
+        panel.nameFieldStringValue = defaultExportFilename(for: format)
+        panel.allowedContentTypes = [format.contentType]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+
+        guard let window = view.window else {
+            let response = panel.runModal()
+            guard response == .OK, let outputURL = panel.url else {
+                return
+            }
+
+            export(format: format, to: outputURL, presentingWindow: nil)
+            return
+        }
+
+        panel.beginSheetModal(for: window) { [weak self] response in
+            Task { @MainActor [weak self] in
+                guard let self, response == .OK, let outputURL = panel.url else {
+                    return
+                }
+
+                self.export(format: format, to: outputURL, presentingWindow: window)
+            }
+        }
+    }
+
+    private func export(format: ExportFormat, to outputURL: URL, presentingWindow: NSWindow?) {
+        let markdown = documentTextSnapshot()
+        let title = defaultExportTitle()
+        let baseURL = documentBaseURL
+
+        Task { @MainActor [weak self] in
+            do {
+                switch format {
+                case .pdf:
+                    try await MarkdownPDFExporter.export(
+                        markdown: markdown,
+                        title: title,
+                        documentBaseURL: baseURL,
+                        to: outputURL
+                    )
+                case .epub:
+                    try await PandocEPUBExporter.export(
+                        markdown: markdown,
+                        title: title,
+                        documentBaseURL: baseURL,
+                        to: outputURL
+                    )
+                }
+            } catch {
+                self?.presentExportError(error, for: format, window: presentingWindow)
+            }
+        }
+    }
+
+    private func presentExportError(_ error: Error, for format: ExportFormat, window: NSWindow?) {
+        let alert = NSAlert(error: error)
+        alert.messageText = "\(format.panelTitle) Failed"
+
+        if let recoverySuggestion = (error as? LocalizedError)?.recoverySuggestion,
+           !recoverySuggestion.isEmpty {
+            alert.informativeText = recoverySuggestion
+        }
+
+        if let window {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
+    }
+
+    private func defaultExportFilename(for format: ExportFormat) -> String {
+        "\(defaultExportTitle()).\(format.fileExtension)"
+    }
+
+    private func defaultExportTitle() -> String {
+        documentURL?
+            .deletingPathExtension()
+            .lastPathComponent
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty ?? "Untitled"
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }
 

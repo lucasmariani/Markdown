@@ -45,10 +45,6 @@ enum MarkdownExportHTML {
           --link: #0969da;
         }
 
-        @page {
-          margin: 0.65in;
-        }
-
         html {
           background: var(--bg);
           color: var(--text);
@@ -168,8 +164,13 @@ enum MarkdownExportHTML {
 
     static let pdfCSS = sharedCSS + """
 
+        @page {
+          margin: 0;
+          size: letter portrait;
+        }
+
         .markdown-export {
-          padding: 0.65in;
+          padding: 0;
         }
         """
 

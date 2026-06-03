@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import PDFKit
 import Testing
 @testable import MarkdownApp
 
@@ -252,15 +253,7 @@ struct MarkdownDocumentTests {
 
         let outputURL = directoryURL.appendingPathComponent("export.pdf")
         try await MarkdownPDFExporter.export(
-            markdown: """
-            # Export
-
-            ```text
-            +----+
-            | OK |
-            +----+
-            ```
-            """,
+            markdown: longPDFExportFixture(),
             title: "Export",
             documentBaseURL: nil,
             to: outputURL
@@ -268,6 +261,20 @@ struct MarkdownDocumentTests {
 
         let data = try Data(contentsOf: outputURL)
         #expect(data.starts(with: Data("%PDF".utf8)))
+
+        let pdf = try #require(PDFDocument(url: outputURL))
+        #expect(pdf.pageCount > 1)
+        let firstPageText = try #require(pdf.page(at: 0)?.string)
+        #expect(firstPageText.contains("Export"))
+        #expect(firstPageText.contains("Section 1"))
+
+        for pageIndex in 0..<pdf.pageCount {
+            let page = try #require(pdf.page(at: pageIndex))
+            let mediaBox = page.bounds(for: .mediaBox)
+
+            #expect(abs(mediaBox.width - 612) < 1)
+            #expect(abs(mediaBox.height - 792) < 1)
+        }
     }
 
     @Test
@@ -389,6 +396,28 @@ struct MarkdownDocumentTests {
     func editorScrollPositionClampsInvalidFractions() {
         #expect(EditorScrollPosition(verticalFraction: -0.5).verticalFraction == 0)
         #expect(EditorScrollPosition(verticalFraction: 1.5).verticalFraction == 1)
+    }
+
+    private func longPDFExportFixture() -> String {
+        let sections = (1...40).map { index in
+            """
+            ## Section \(index)
+
+            Markdown export should paginate this content onto normal paper-sized PDF pages without changing code block spacing.
+
+            ```text
+            +-----------+       +-----------+
+            | source \(index) | ----> | output \(index) |
+            +-----------+       +-----------+
+            ```
+            """
+        }
+
+        return """
+        # Export
+
+        \(sections.joined(separator: "\n\n"))
+        """
     }
 
     private func testScrollView(isDocumentFlipped: Bool) -> NSScrollView {

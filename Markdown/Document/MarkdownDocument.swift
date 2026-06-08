@@ -62,6 +62,28 @@ final class MarkdownDocument: NSDocument {
         NSLog("[MarkdownDocument] makeWindowControllers end windowControllers=%ld", windowControllers.count)
     }
 
+    @objc func exportPDF(_ sender: Any?) {
+        guard let editorViewController else {
+            NSSound.beep()
+            return
+        }
+
+        editorViewController.exportPDF(sender)
+    }
+
+    @objc func exportEPUB(_ sender: Any?) {
+        guard let editorViewController else {
+            NSSound.beep()
+            return
+        }
+
+        editorViewController.exportEPUB(sender)
+    }
+
+    override func printDocument(_ sender: Any?) {
+        exportPDF(sender)
+    }
+
     override func data(ofType typeName: String) throws -> Data {
         let snapshot = currentTextSnapshot()
         if let data = snapshot.data(using: storedTextEncoding()) {

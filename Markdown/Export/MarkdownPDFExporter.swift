@@ -106,22 +106,19 @@ enum MarkdownPDFExporter {
             throw MarkdownExportError.pdfOutputMissing
         }
 
-        let temporaryURL = outputURL
-            .deletingLastPathComponent()
-            .appendingPathComponent(".\(outputURL.deletingPathExtension().lastPathComponent)-\(UUID().uuidString).pdf")
+        let outputData = NSMutableData()
+        guard let consumer = CGDataConsumer(data: outputData as CFMutableData) else {
+            throw MarkdownExportError.pdfOutputMissing
+        }
         var mediaBox = CGRect(origin: .zero, size: Page.paperSize)
-        let context = CGContext(temporaryURL as CFURL, mediaBox: &mediaBox, nil)
+        let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)
         guard let context else {
             throw MarkdownExportError.pdfOutputMissing
         }
         var didClosePDF = false
-        var didMovePDF = false
         defer {
             if !didClosePDF {
                 context.closePDF()
-            }
-            if !didMovePDF {
-                try? FileManager.default.removeItem(at: temporaryURL)
             }
         }
 
@@ -146,11 +143,11 @@ enum MarkdownPDFExporter {
         context.closePDF()
         didClosePDF = true
 
-        if FileManager.default.fileExists(atPath: outputURL.path) {
-            try FileManager.default.removeItem(at: outputURL)
+        do {
+            try (outputData as Data).write(to: outputURL)
+        } catch {
+            throw MarkdownExportError.pdfWriteFailed(message: error.localizedDescription)
         }
-        try FileManager.default.moveItem(at: temporaryURL, to: outputURL)
-        didMovePDF = true
     }
 
     private static func pdfData(from webView: WKWebView, configuration: WKPDFConfiguration) async throws -> Data {

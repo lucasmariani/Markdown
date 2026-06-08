@@ -6,7 +6,6 @@
 //
 
 import AppKit
-import PDFKit
 import UniformTypeIdentifiers
 
 // Keeps the AppKit document editors and the toolbar search UI in sync.
@@ -43,7 +42,6 @@ final class EditorViewController: NSViewController {
     private var sourceText: String = ""
     private var documentURL: URL?
     private var documentBaseURL: URL?
-    private var activePrintJobs: [MarkdownPrintJob] = []
 
     private lazy var sourceController: SourceEditorController = {
         let controller = SourceEditorController()
@@ -470,7 +468,7 @@ extension EditorViewController {
     }
 
     @objc func printDocument(_ sender: Any?) {
-        printCurrentDocument(presentingWindow: view.window)
+        exportPDF(sender)
     }
 
     func applyMarkdownFormatting(_ command: RenderedMarkdownFormattingCommand) {
@@ -516,6 +514,13 @@ extension EditorViewController {
         let baseURL = documentBaseURL
 
         Task { @MainActor [weak self] in
+            let didStartAccessing = outputURL.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccessing {
+                    outputURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
             do {
                 switch format {
                 case .pdf:
@@ -539,56 +544,10 @@ extension EditorViewController {
         }
     }
 
-    private func printCurrentDocument(presentingWindow: NSWindow?) {
-        let markdown = documentTextSnapshot()
-        let title = defaultExportTitle()
-        let baseURL = documentBaseURL
-
-        Task { @MainActor [weak self] in
-            guard let self else {
-                return
-            }
-
-            do {
-                let job = try await MarkdownPrintJob.make(
-                    markdown: markdown,
-                    title: title,
-                    documentBaseURL: baseURL
-                )
-                try runPrintJob(job, presentingWindow: presentingWindow)
-            } catch {
-                presentPrintError(error, window: presentingWindow)
-            }
-        }
-    }
-
-    private func runPrintJob(_ job: MarkdownPrintJob, presentingWindow: NSWindow?) throws {
-        activePrintJobs.append(job)
-        job.setCompletion { [weak self, weak job] in
-            guard let job else {
-                return
-            }
-
-            self?.activePrintJobs.removeAll { $0 === job }
-        }
-
-        do {
-            try job.run(presentingWindow: presentingWindow)
-        } catch {
-            activePrintJobs.removeAll { $0 === job }
-            job.cleanUp()
-            throw error
-        }
-    }
-
     private func presentExportError(_ error: Error, for format: ExportFormat, window: NSWindow?) {
-        let alert = NSAlert(error: error)
+        let alert = NSAlert()
         alert.messageText = "\(format.panelTitle) Failed"
-
-        if let recoverySuggestion = (error as? LocalizedError)?.recoverySuggestion,
-           !recoverySuggestion.isEmpty {
-            alert.informativeText = recoverySuggestion
-        }
+        alert.informativeText = exportErrorMessage(for: error)
 
         if let window {
             alert.beginSheetModal(for: window)
@@ -597,20 +556,18 @@ extension EditorViewController {
         }
     }
 
-    private func presentPrintError(_ error: Error, window: NSWindow?) {
-        let alert = NSAlert(error: error)
-        alert.messageText = "Print Failed"
-
-        if let recoverySuggestion = (error as? LocalizedError)?.recoverySuggestion,
-           !recoverySuggestion.isEmpty {
-            alert.informativeText = recoverySuggestion
+    private func exportErrorMessage(for error: Error) -> String {
+        if let localizedError = error as? LocalizedError {
+            return [
+                localizedError.errorDescription,
+                localizedError.recoverySuggestion
+            ]
+            .compactMap { $0?.nilIfEmpty }
+            .joined(separator: "\n\n")
+            .nilIfEmpty ?? error.localizedDescription
         }
 
-        if let window {
-            alert.beginSheetModal(for: window)
-        } else {
-            alert.runModal()
-        }
+        return error.localizedDescription
     }
 
     private func defaultExportFilename(for format: ExportFormat) -> String {
@@ -623,109 +580,6 @@ extension EditorViewController {
             .lastPathComponent
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty ?? "Untitled"
-    }
-}
-
-@MainActor
-private final class MarkdownPrintJob: NSObject {
-    private let directoryURL: URL
-    private let document: PDFDocument
-    private var completion: (() -> Void)?
-
-    static func make(markdown: String, title: String, documentBaseURL: URL?) async throws -> MarkdownPrintJob {
-        let directoryURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("MarkdownPrint-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-
-        do {
-            let outputURL = directoryURL
-                .appendingPathComponent(safeFilenameComponent(for: title))
-                .appendingPathExtension("pdf")
-            try await MarkdownPDFExporter.export(
-                markdown: markdown,
-                title: title,
-                documentBaseURL: documentBaseURL,
-                to: outputURL
-            )
-            guard let document = PDFDocument(url: outputURL) else {
-                throw MarkdownExportError.pdfOutputMissing
-            }
-
-            return MarkdownPrintJob(directoryURL: directoryURL, document: document)
-        } catch {
-            try? FileManager.default.removeItem(at: directoryURL)
-            throw error
-        }
-    }
-
-    private init(directoryURL: URL, document: PDFDocument) {
-        self.directoryURL = directoryURL
-        self.document = document
-    }
-
-    func setCompletion(_ completion: @escaping () -> Void) {
-        self.completion = completion
-    }
-
-    func run(presentingWindow window: NSWindow?) throws {
-        let printInfo = NSPrintInfo.shared.copy() as? NSPrintInfo ?? NSPrintInfo()
-        printInfo.horizontalPagination = .fit
-        printInfo.verticalPagination = .automatic
-        printInfo.isHorizontallyCentered = true
-        printInfo.isVerticallyCentered = false
-
-        guard let operation = document.printOperation(
-            for: printInfo,
-            scalingMode: .pageScaleToFit,
-            autoRotate: true
-        ) else {
-            throw MarkdownExportError.printUnavailable
-        }
-
-        operation.showsPrintPanel = true
-        operation.showsProgressPanel = true
-
-        if let window {
-            operation.runModal(
-                for: window,
-                delegate: self,
-                didRun: #selector(printOperationDidRun(_:success:contextInfo:)),
-                contextInfo: nil
-            )
-        } else {
-            _ = operation.run()
-            finish()
-        }
-    }
-
-    func cleanUp() {
-        try? FileManager.default.removeItem(at: directoryURL)
-    }
-
-    @objc private func printOperationDidRun(
-        _ printOperation: NSPrintOperation,
-        success: Bool,
-        contextInfo: UnsafeMutableRawPointer?
-    ) {
-        finish()
-    }
-
-    private func finish() {
-        cleanUp()
-        completion?()
-        completion = nil
-    }
-
-    private static func safeFilenameComponent(for title: String) -> String {
-        let invalidCharacters = CharacterSet(charactersIn: "/:")
-            .union(.newlines)
-            .union(.controlCharacters)
-        let cleaned = title
-            .components(separatedBy: invalidCharacters)
-            .joined(separator: "-")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        return cleaned.nilIfEmpty ?? "Untitled"
     }
 }
 

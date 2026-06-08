@@ -94,6 +94,15 @@ struct MarkdownDocumentTests {
     }
 
     @Test
+    func documentHandlesExportMenuActions() {
+        let document = MarkdownDocument()
+
+        #expect(document.responds(to: #selector(EditorViewController.exportPDF(_:))))
+        #expect(document.responds(to: #selector(EditorViewController.exportEPUB(_:))))
+        #expect(document.responds(to: #selector(EditorViewController.printDocument(_:))))
+    }
+
+    @Test
     func updatingFileURLRefreshesWindowSubtitle() async throws {
         let document = MarkdownDocument()
         document.makeWindowControllers()

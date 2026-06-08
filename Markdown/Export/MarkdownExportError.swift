@@ -10,7 +10,7 @@ enum MarkdownExportError: LocalizedError, Equatable {
     case pandocFailed(status: Int32, message: String)
     case pdfOutputMissing
     case pdfTimedOut(step: String)
-    case printUnavailable
+    case pdfWriteFailed(message: String)
 
     var errorDescription: String? {
         switch self {
@@ -22,8 +22,8 @@ enum MarkdownExportError: LocalizedError, Equatable {
             "Markdown did not receive a PDF from WebKit."
         case let .pdfTimedOut(step):
             "Markdown timed out while \(step)."
-        case .printUnavailable:
-            "Markdown could not create a print operation."
+        case .pdfWriteFailed:
+            "Markdown could not write the PDF file."
         }
     }
 
@@ -37,8 +37,8 @@ enum MarkdownExportError: LocalizedError, Equatable {
             "Try exporting again after relaunching Markdown."
         case .pdfTimedOut:
             "Try again after relaunching Markdown. If this keeps happening, export a shorter section of the document."
-        case .printUnavailable:
-            "Use File > Export as PDF, then print the PDF from Preview."
+        case let .pdfWriteFailed(message):
+            message.isEmpty ? "Choose a different location, then try exporting again." : message
         }
     }
 }

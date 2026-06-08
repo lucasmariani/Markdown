@@ -209,6 +209,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureMainMenu() {
+        NSApp.mainMenu = Self.makeMainMenu()
+    }
+
+    static func makeMainMenu() -> NSMenu {
         let mainMenu = NSMenu()
 
         let appMenuItem = NSMenuItem()
@@ -282,7 +286,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         browseVersionsItem.target = nil
 
         fileMenu.addItem(NSMenuItem.separator())
-        fileMenu.addItem(withTitle: "Print…", action: #selector(NSDocument.printDocument(_:)), keyEquivalent: "p").target = nil
+        fileMenu.addItem(withTitle: "Print…", action: #selector(EditorViewController.printDocument(_:)), keyEquivalent: "p").target = nil
 
         let editMenuItem = NSMenuItem()
         mainMenu.addItem(editMenuItem)
@@ -320,6 +324,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         viewMenu.addItem(withTitle: "Rendered", action: #selector(EditorViewController.showRendered(_:)), keyEquivalent: "1").target = nil
         viewMenu.addItem(withTitle: "Source", action: #selector(EditorViewController.showSource(_:)), keyEquivalent: "2").target = nil
 
-        NSApp.mainMenu = mainMenu
+        return mainMenu
     }
 }

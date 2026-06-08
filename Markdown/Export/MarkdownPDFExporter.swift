@@ -8,6 +8,12 @@ import WebKit
 
 @MainActor
 enum MarkdownPDFExporter {
+    fileprivate enum Timeout {
+        static let pageLoadNanoseconds: UInt64 = 30_000_000_000
+        static let javaScriptNanoseconds: UInt64 = 15_000_000_000
+        static let pdfPageNanoseconds: UInt64 = 60_000_000_000
+    }
+
     private enum Page {
         static let paperSize = NSSize(width: 612, height: 792)
         static let margin: CGFloat = 46.8
@@ -64,12 +70,8 @@ enum MarkdownPDFExporter {
         })()
         """
 
-        let result = try await webView.evaluateJavaScript(script)
-        if let number = result as? NSNumber {
-            return CGFloat(truncating: number)
-        }
-
-        return webView.frame.height
+        let evaluator = JavaScriptEvaluationRequest(timeoutNanoseconds: Timeout.javaScriptNanoseconds)
+        return try await evaluator.evaluateHeight(script, in: webView, fallbackHeight: webView.frame.height)
     }
 
     private static func capturePageData(from webView: WKWebView, totalContentHeight: CGFloat) async throws -> [Data] {
@@ -152,43 +154,181 @@ enum MarkdownPDFExporter {
     }
 
     private static func pdfData(from webView: WKWebView, configuration: WKPDFConfiguration) async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
-            webView.createPDF(configuration: configuration) { result in
-                continuation.resume(with: result)
-            }
-        }
+        let request = PDFDataRequest(timeoutNanoseconds: Timeout.pdfPageNanoseconds)
+        return try await request.createPDF(from: webView, configuration: configuration)
     }
 }
 
 @MainActor
 private final class ExportWebViewLoader: NSObject, WKNavigationDelegate {
     private var continuation: CheckedContinuation<Void, Error>?
+    private var timeoutWorkItem: DispatchWorkItem?
 
     func load(html: String, baseURL: URL?, in webView: WKWebView) async throws {
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
+            let timeoutWorkItem = DispatchWorkItem { [weak self] in
+                self?.finish(throwing: MarkdownExportError.pdfTimedOut(step: "loading the document for PDF export"))
+            }
+            self.timeoutWorkItem = timeoutWorkItem
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + .milliseconds(Int(MarkdownPDFExporter.Timeout.pageLoadNanoseconds / 1_000_000)),
+                execute: timeoutWorkItem
+            )
             webView.loadHTMLString(html, baseURL: baseURL)
         }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        finish(with: .success(()))
+        finish()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        finish(with: .failure(error))
+        finish(throwing: error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        finish(with: .failure(error))
+        finish(throwing: error)
     }
 
-    private func finish(with result: Result<Void, Error>) {
+    private func finish() {
         guard let continuation else {
             return
         }
 
         self.continuation = nil
-        continuation.resume(with: result)
+        timeoutWorkItem?.cancel()
+        timeoutWorkItem = nil
+        continuation.resume()
+    }
+
+    private func finish(throwing error: Error) {
+        guard let continuation else {
+            return
+        }
+
+        self.continuation = nil
+        timeoutWorkItem?.cancel()
+        timeoutWorkItem = nil
+        continuation.resume(throwing: error)
+    }
+}
+
+@MainActor
+private final class JavaScriptEvaluationRequest {
+    private let timeoutNanoseconds: UInt64
+    private var continuation: CheckedContinuation<CGFloat, Error>?
+    private var timeoutWorkItem: DispatchWorkItem?
+
+    init(timeoutNanoseconds: UInt64) {
+        self.timeoutNanoseconds = timeoutNanoseconds
+    }
+
+    func evaluateHeight(_ script: String, in webView: WKWebView, fallbackHeight: CGFloat) async throws -> CGFloat {
+        try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+            let timeoutNanoseconds = self.timeoutNanoseconds
+            let timeoutWorkItem = DispatchWorkItem { [weak self] in
+                self?.finish(throwing: MarkdownExportError.pdfTimedOut(step: "measuring the document for PDF export"))
+            }
+            self.timeoutWorkItem = timeoutWorkItem
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + .milliseconds(Int(timeoutNanoseconds / 1_000_000)),
+                execute: timeoutWorkItem
+            )
+
+            webView.evaluateJavaScript(script) { [weak self] value, error in
+                Task { @MainActor in
+                    if let error {
+                        self?.finish(throwing: error)
+                    } else if let number = value as? NSNumber {
+                        self?.finish(returning: CGFloat(truncating: number))
+                    } else {
+                        self?.finish(returning: fallbackHeight)
+                    }
+                }
+            }
+        }
+    }
+
+    private func finish(returning height: CGFloat) {
+        guard let continuation else {
+            return
+        }
+
+        self.continuation = nil
+        timeoutWorkItem?.cancel()
+        timeoutWorkItem = nil
+        continuation.resume(returning: height)
+    }
+
+    private func finish(throwing error: Error) {
+        guard let continuation else {
+            return
+        }
+
+        self.continuation = nil
+        timeoutWorkItem?.cancel()
+        timeoutWorkItem = nil
+        continuation.resume(throwing: error)
+    }
+}
+
+@MainActor
+private final class PDFDataRequest {
+    private let timeoutNanoseconds: UInt64
+    private var continuation: CheckedContinuation<Data, Error>?
+    private var timeoutWorkItem: DispatchWorkItem?
+
+    init(timeoutNanoseconds: UInt64) {
+        self.timeoutNanoseconds = timeoutNanoseconds
+    }
+
+    func createPDF(from webView: WKWebView, configuration: WKPDFConfiguration) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+            let timeoutNanoseconds = self.timeoutNanoseconds
+            let timeoutWorkItem = DispatchWorkItem { [weak self] in
+                self?.finish(throwing: MarkdownExportError.pdfTimedOut(step: "creating a PDF page"))
+            }
+            self.timeoutWorkItem = timeoutWorkItem
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + .milliseconds(Int(timeoutNanoseconds / 1_000_000)),
+                execute: timeoutWorkItem
+            )
+
+            webView.createPDF(configuration: configuration) { [weak self] result in
+                Task { @MainActor in
+                    switch result {
+                    case let .success(data):
+                        self?.finish(returning: data)
+                    case let .failure(error):
+                        self?.finish(throwing: error)
+                    }
+                }
+            }
+        }
+    }
+
+    private func finish(returning data: Data) {
+        guard let continuation else {
+            return
+        }
+
+        self.continuation = nil
+        timeoutWorkItem?.cancel()
+        timeoutWorkItem = nil
+        continuation.resume(returning: data)
+    }
+
+    private func finish(throwing error: Error) {
+        guard let continuation else {
+            return
+        }
+
+        self.continuation = nil
+        timeoutWorkItem?.cancel()
+        timeoutWorkItem = nil
+        continuation.resume(throwing: error)
     }
 }

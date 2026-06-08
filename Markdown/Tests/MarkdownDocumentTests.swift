@@ -84,6 +84,16 @@ struct MarkdownDocumentTests {
     }
 
     @Test
+    func fileMenuRoutesPrintThroughEditorController() throws {
+        let menu = AppDelegate.makeMainMenu()
+        let fileMenu = try #require(menu.items.compactMap(\.submenu).first { $0.title == "File" })
+        let printItem = try #require(fileMenu.item(withTitle: "Print…"))
+
+        #expect(printItem.action == #selector(EditorViewController.printDocument(_:)))
+        #expect(printItem.target == nil)
+    }
+
+    @Test
     func updatingFileURLRefreshesWindowSubtitle() async throws {
         let document = MarkdownDocument()
         document.makeWindowControllers()

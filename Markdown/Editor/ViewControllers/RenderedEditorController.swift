@@ -2,12 +2,12 @@
 //  RenderedEditorController.swift
 //  Markdown
 //
-//  Created by Lucas on 05/03/26.
-//
 
 import AppKit
-import UniformTypeIdentifiers
-import WebKit
+import MarkdownEngine
+import MarkdownEngineCodeBlocks
+import Observation
+import SwiftUI
 
 enum RenderedMarkdownFormattingCommand: String {
     case paragraph
@@ -26,550 +26,380 @@ enum RenderedMarkdownFormattingCommand: String {
     case inlineCode
 }
 
-private final class LocalFileResourceSchemeHandler: NSObject, WKURLSchemeHandler {
-    static let scheme = "markdown-local-resource"
+private struct RenderedEditorBus {
+    let applyBold: Notification.Name
+    let applyItalic: Notification.Name
+    let applyHeading: Notification.Name
+    let applyInlineCode: Notification.Name
+    let applyBlockquote: Notification.Name
+    let applyUnorderedList: Notification.Name
+    let applyOrderedList: Notification.Name
+    let applyCodeBlock: Notification.Name
+    let findQuery: Notification.Name
+    let findResults: Notification.Name
+    let clearFindHighlights: Notification.Name
 
-    private let lock = NSLock()
-    private var rootURL: URL?
-
-    func setRootURL(_ url: URL?) {
-        lock.withLock {
-            rootURL = url?.standardizedFileURL.resolvingSymlinksInPath()
-        }
+    init(identifier: UUID = UUID()) {
+        let prefix = "com.rianami.markdown.rendered-editor.\(identifier.uuidString)"
+        applyBold = Notification.Name("\(prefix).format.bold")
+        applyItalic = Notification.Name("\(prefix).format.italic")
+        applyHeading = Notification.Name("\(prefix).format.heading")
+        applyInlineCode = Notification.Name("\(prefix).format.inline-code")
+        applyBlockquote = Notification.Name("\(prefix).format.blockquote")
+        applyUnorderedList = Notification.Name("\(prefix).format.unordered-list")
+        applyOrderedList = Notification.Name("\(prefix).format.ordered-list")
+        applyCodeBlock = Notification.Name("\(prefix).format.code-block")
+        findQuery = Notification.Name("\(prefix).find.query")
+        findResults = Notification.Name("\(prefix).find.results")
+        clearFindHighlights = Notification.Name("\(prefix).find.clear")
     }
 
-    func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
-        guard let requestURL = urlSchemeTask.request.url,
-              let fileURL = fileURL(for: requestURL),
-              let data = try? Data(contentsOf: fileURL, options: [.mappedIfSafe]) else {
-            urlSchemeTask.didFailWithError(CocoaError(.fileReadNoSuchFile))
-            return
-        }
-
-        let mimeType = (try? fileURL.resourceValues(forKeys: [.contentTypeKey]))
-            .flatMap(\.contentType)?
-            .preferredMIMEType ?? "application/octet-stream"
-        let response = URLResponse(
-            url: requestURL,
-            mimeType: mimeType,
-            expectedContentLength: data.count,
-            textEncodingName: nil
+    var engineBus: MarkdownEditorBus {
+        MarkdownEditorBus(
+            applyBoldRequest: applyBold,
+            applyItalicRequest: applyItalic,
+            applyHeadingRequest: applyHeading,
+            applyInlineCodeRequest: applyInlineCode,
+            applyBlockquoteRequest: applyBlockquote,
+            applyUnorderedListRequest: applyUnorderedList,
+            applyOrderedListRequest: applyOrderedList,
+            applyCodeBlockRequest: applyCodeBlock,
+            findClearHighlights: clearFindHighlights,
+            findQuery: findQuery,
+            findResults: findResults
         )
-        urlSchemeTask.didReceive(response)
-        urlSchemeTask.didReceive(data)
-        urlSchemeTask.didFinish()
-    }
-
-    func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {
-    }
-
-    private func fileURL(for requestURL: URL) -> URL? {
-        guard let components = URLComponents(url: requestURL, resolvingAgainstBaseURL: false),
-              let encodedFileURL = components.queryItems?.first(where: { $0.name == "url" })?.value,
-              let fileURL = URL(string: encodedFileURL),
-              fileURL.isFileURL else {
-            return nil
-        }
-
-        let resolvedRootURL = lock.withLock { rootURL }
-        guard let resolvedRootURL else {
-            return nil
-        }
-
-        let resolvedFileURL = fileURL.standardizedFileURL.resolvingSymlinksInPath()
-        guard isDescendant(resolvedFileURL, of: resolvedRootURL) else {
-            return nil
-        }
-
-        return resolvedFileURL
-    }
-
-    private func isDescendant(_ fileURL: URL, of rootURL: URL) -> Bool {
-        let rootPath = rootURL.path(percentEncoded: false).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let filePath = fileURL.path(percentEncoded: false).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-
-        return filePath.hasPrefix(rootPath + "/")
-    }
-}
-
-private final class RenderedWebView: WKWebView {
-    override func setFrameSize(_ newSize: NSSize) {
-        super.setFrameSize(newSize)
-        needsDisplay = true
-    }
-
-    override func scrollWheel(with event: NSEvent) {
-        if let scrollView = enclosingScrollView {
-            scrollView.scrollWheel(with: event)
-        } else {
-            super.scrollWheel(with: event)
-        }
-    }
-}
-
-private final class FlippedDocumentView: NSView {
-    override var isFlipped: Bool { true }
-}
-
-private final class RenderedEditorScriptMessageHandler: NSObject, WKScriptMessageHandler {
-    weak var controller: RenderedEditorController?
-
-    init(controller: RenderedEditorController) {
-        self.controller = controller
-    }
-
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        controller?.handleScriptMessage(message)
     }
 }
 
 @MainActor
-final class RenderedEditorController: NSObject, WKNavigationDelegate {
-    private enum ScriptMessage {
-        static let name = "renderedEditor"
+@Observable
+private final class RenderedEditorState {
+    var markdown: String {
+        didSet {
+            guard markdown != oldValue, !isApplyingDocumentText else {
+                return
+            }
+            onMarkdownChanged?(markdown)
+        }
     }
 
-    let scrollView = NSScrollView(frame: .zero)
-    private let documentContainerView = FlippedDocumentView(frame: .zero)
-    private var webView: WKWebView?
-    private var pendingHeightRefreshWorkItem: DispatchWorkItem?
+    var configuration: MarkdownEditorConfiguration
+    var documentIdentifier: String
 
-    private var latestMarkdown = ""
-    private var documentBaseURL: URL?
-    private let localFileSchemeHandler = LocalFileResourceSchemeHandler()
-    private var isReady = false
-    private var pendingRefresh = false
+    @ObservationIgnored var onMarkdownChanged: ((String) -> Void)?
+    @ObservationIgnored private var isApplyingDocumentText = false
 
-    var onMarkdownChanged: ((String) -> Void)?
+    init(
+        markdown: String = "",
+        configuration: MarkdownEditorConfiguration,
+        documentIdentifier: String
+    ) {
+        self.markdown = markdown
+        self.configuration = configuration
+        self.documentIdentifier = documentIdentifier
+    }
+
+    func applyDocumentText(_ text: String) {
+        guard markdown != text else {
+            return
+        }
+
+        isApplyingDocumentText = true
+        markdown = text
+        isApplyingDocumentText = false
+    }
+}
+
+private struct RenderedEditorView: View {
+    @Bindable var state: RenderedEditorState
+
+    var body: some View {
+        NativeTextViewWrapper(
+            text: $state.markdown,
+            configuration: state.configuration,
+            fontName: "SF Pro",
+            fontSize: 15,
+            documentId: state.documentIdentifier
+        )
+    }
+}
+
+@MainActor
+final class RenderedEditorController: NSObject {
+    private let bus: RenderedEditorBus
+    private let unsavedDocumentIdentifier: String
+    private let syntaxHighlighter: HighlighterSwiftBridge
+    private let state: RenderedEditorState
+    private lazy var hostingView = NSHostingView(rootView: RenderedEditorView(state: state))
+    private var documentDirectoryURL: URL?
+
+    private var currentSearchQuery = ""
+    private var currentSearchIndex = 0
+    private var latestSearchCount = 0
+
+    var onMarkdownChanged: ((String) -> Void)? {
+        get { state.onMarkdownChanged }
+        set { state.onMarkdownChanged = newValue }
+    }
+
+    var view: NSView {
+        hostingView
+    }
 
     override init() {
+        let bus = RenderedEditorBus()
+        let unsavedDocumentIdentifier = "unsaved-\(UUID().uuidString)"
+        let syntaxHighlighter = HighlighterSwiftBridge()
+        var configuration = MarkdownEditorConfiguration.default
+        configuration.extensions = [StrikethroughExtension()]
+        configuration.textInsets = TextInsets(horizontal: 28, vertical: 20)
+
+        configuration.services = MarkdownEditorServices(
+            images: DocumentImageProvider(documentDirectoryURL: nil),
+            syntaxHighlighter: syntaxHighlighter,
+            bus: bus.engineBus
+        )
+
+        state = RenderedEditorState(
+            configuration: configuration,
+            documentIdentifier: unsavedDocumentIdentifier
+        )
+
+        self.bus = bus
+        self.unsavedDocumentIdentifier = unsavedDocumentIdentifier
+        self.syntaxHighlighter = syntaxHighlighter
         super.init()
-        configureScrollView()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleFindResults(_:)),
+            name: bus.findResults,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     @discardableResult
-    func ensureWebView() -> Bool {
-        if webView != nil {
-            return true
-        }
-
-        let configuration = WKWebViewConfiguration()
-        localFileSchemeHandler.setRootURL(documentBaseURL)
-        configuration.setURLSchemeHandler(localFileSchemeHandler, forURLScheme: LocalFileResourceSchemeHandler.scheme)
-        configuration.userContentController.add(
-            RenderedEditorScriptMessageHandler(controller: self),
-            name: ScriptMessage.name
-        )
-
-        let webView = RenderedWebView(frame: .zero, configuration: configuration)
-        webView.navigationDelegate = self
-        webView.autoresizingMask = [.width, .height]
-        webView.setValue(false, forKey: "drawsBackground")
-        webView.frame = documentContainerView.bounds
-
-        documentContainerView.addSubview(webView)
-        layoutDocumentContainer(minimumHeight: max(scrollView.contentView.bounds.height, 1))
-
-        self.webView = webView
-        loadShell()
+    func ensureView() -> Bool {
+        _ = hostingView
         return true
     }
 
     func render(markdown: String) {
-        latestMarkdown = markdown
-        guard let webView else {
-            pendingRefresh = true
+        state.applyDocumentText(markdown)
+    }
+
+    func setDocumentURL(_ documentURL: URL?) {
+        state.documentIdentifier = documentURL?
+            .standardizedFileURL
+            .path(percentEncoded: false) ?? unsavedDocumentIdentifier
+
+        let baseURL = documentURL?.deletingLastPathComponent()
+        guard documentDirectoryURL?.standardizedFileURL != baseURL?.standardizedFileURL else {
             return
         }
 
-        guard isReady else {
-            pendingRefresh = true
-            loadShell()
-            return
-        }
-
-        let html = MarkdownRenderer.html(from: markdown)
-        let htmlLiteral = javaScriptStringLiteral(html)
-        let command = """
-        (() => {
-          if (typeof window.setRenderedDocument === 'function') {
-            try {
-              window.setRenderedDocument(\(htmlLiteral));
-              return 'setRenderedDocument';
-            } catch (error) {
-              console.error('setRenderedDocument failed', error);
-            }
-          }
-
-          throw new Error('rendered editor sanitizer is unavailable');
-        })()
-        """
-
-        webView.evaluateJavaScript(command) { [weak self] _, error in
-            if let error {
-                NSLog("Failed to apply rendered HTML: %@", error.localizedDescription)
-            }
-
-            self?.scheduleHeightRefresh(after: 0.25)
-        }
+        documentDirectoryURL = baseURL
+        var configuration = state.configuration
+        configuration.services = MarkdownEditorServices(
+            images: DocumentImageProvider(documentDirectoryURL: baseURL),
+            syntaxHighlighter: syntaxHighlighter,
+            bus: bus.engineBus
+        )
+        state.configuration = configuration
     }
 
     func applyFormatting(_ command: RenderedMarkdownFormattingCommand) {
-        guard isReady, let webView else {
-            return
-        }
+        let center = NotificationCenter.default
 
-        let commandLiteral = javaScriptStringLiteral(command.rawValue)
-        let script = """
-        (() => {
-          if (typeof window.applyMarkdownFormatting !== 'function') {
-            throw new Error('rendered editor formatting is unavailable');
-          }
-
-          window.applyMarkdownFormatting(\(commandLiteral));
-        })()
-        """
-
-        webView.evaluateJavaScript(script) { [weak self] _, error in
-            if let error {
-                NSLog("Failed to apply rendered formatting: %@", error.localizedDescription)
+        switch command {
+        case .paragraph:
+            applyParagraphStyle()
+        case .heading1, .heading2, .heading3, .heading4, .heading5, .heading6:
+            let level = switch command {
+            case .heading1: 1
+            case .heading2: 2
+            case .heading3: 3
+            case .heading4: 4
+            case .heading5: 5
+            case .heading6: 6
+            default: 1
             }
-
-            self?.scheduleHeightRefresh(after: 0.15)
+            center.post(name: bus.applyHeading, object: nil, userInfo: ["level": level])
+        case .quote:
+            center.post(name: bus.applyBlockquote, object: nil)
+        case .codeBlock:
+            center.post(name: bus.applyCodeBlock, object: nil)
+        case .unorderedList:
+            center.post(name: bus.applyUnorderedList, object: nil)
+        case .orderedList:
+            center.post(name: bus.applyOrderedList, object: nil)
+        case .bold:
+            center.post(name: bus.applyBold, object: nil)
+        case .italic:
+            center.post(name: bus.applyItalic, object: nil)
+        case .inlineCode:
+            center.post(name: bus.applyInlineCode, object: nil)
         }
     }
 
     func find(query: String, backwards: Bool) {
-        guard isReady, let webView else {
+        let count = countMatches(query: query)
+        guard count > 0 else {
+            currentSearchQuery = query
+            currentSearchIndex = 0
+            postFindQuery(query: query, index: 0)
             return
         }
 
-        let configuration = WKFindConfiguration()
-        configuration.backwards = backwards
-        configuration.caseSensitive = false
-        configuration.wraps = true
-        webView.find(query, configuration: configuration) { [weak self] result in
-            guard let self, result.matchFound else {
-                return
-            }
-
-            self.scrollCurrentMatchIntoView()
+        if currentSearchQuery != query {
+            currentSearchQuery = query
+            currentSearchIndex = backwards ? count - 1 : 0
+        } else if backwards {
+            currentSearchIndex = (currentSearchIndex - 1 + count) % count
+        } else {
+            currentSearchIndex = (currentSearchIndex + 1) % count
         }
+
+        postFindQuery(query: query, index: currentSearchIndex)
     }
 
     func countMatches(query: String, completion: @escaping (Int) -> Void) {
-        guard isReady, let webView, !query.isEmpty else {
-            completion(0)
-            return
-        }
-
-        let queryLiteral = javaScriptStringLiteral(query)
-        let script = """
-        (() => {
-          const query = \(queryLiteral);
-          if (!query) {
-            return 0;
-          }
-
-          const editor = document.getElementById('editor');
-          const haystack = (editor?.innerText ?? document.body?.innerText ?? '').toLocaleLowerCase();
-          const needle = query.toLocaleLowerCase();
-
-          let count = 0;
-          let indexStep = Math.max(needle.length, 1);
-          let searchIndex = 0;
-          for (let index = haystack.indexOf(needle, searchIndex); index !== -1; index = haystack.indexOf(needle, index + indexStep)) {
-            count += 1;
-          }
-
-          return count;
-        })()
-        """
-
-        webView.evaluateJavaScript(script) { result, error in
-            if let error {
-                NSLog("Failed to count rendered search results: %@", error.localizedDescription)
-                completion(0)
-                return
-            }
-
-            completion((result as? NSNumber).map { Int(truncating: $0) } ?? 0)
-        }
+        let count = countMatches(query: query)
+        latestSearchCount = count
+        completion(count)
     }
 
     func clearSearchResults() {
-        guard isReady else {
-            return
-        }
-
-        render(markdown: latestMarkdown)
+        currentSearchQuery = ""
+        currentSearchIndex = 0
+        latestSearchCount = 0
+        NotificationCenter.default.post(name: bus.clearFindHighlights, object: nil)
     }
 
     func focus(in window: NSWindow?) {
-        guard let webView else {
-            return
-        }
-        window?.makeFirstResponder(webView)
-    }
-
-    func setDocumentBaseURL(_ baseURL: URL?) {
-        guard normalizedURL(documentBaseURL) != normalizedURL(baseURL) else {
+        guard let window else {
             return
         }
 
-        documentBaseURL = baseURL
-        localFileSchemeHandler.setRootURL(baseURL)
-        guard webView != nil else {
+        if let textView = editorTextView {
+            window.makeFirstResponder(textView)
             return
         }
 
-        pendingRefresh = true
-        loadShell()
-    }
-
-    func handleScriptMessage(_ message: WKScriptMessage) {
-        guard message.name == ScriptMessage.name,
-              let payload = message.body as? [String: Any],
-              payload["type"] as? String == "markdownChanged",
-              let markdown = payload["markdown"] as? String,
-              markdown != latestMarkdown else {
-            return
-        }
-
-        latestMarkdown = markdown
-        onMarkdownChanged?(markdown)
-        scheduleHeightRefresh(after: 0.15)
-    }
-
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        isReady = true
-        scheduleHeightRefresh()
-        if pendingRefresh {
-            pendingRefresh = false
-            render(markdown: latestMarkdown)
+        DispatchQueue.main.async { [weak self, weak window] in
+            guard let textView = self?.editorTextView else {
+                return
+            }
+            window?.makeFirstResponder(textView)
         }
     }
 
-    func webView(
-        _ webView: WKWebView,
-        decidePolicyFor navigationAction: WKNavigationAction,
-        decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
-    ) {
-        guard navigationAction.navigationType == .linkActivated else {
-            decisionHandler(.allow)
-            return
-        }
-
-        if let url = navigationAction.request.url {
-            NSWorkspace.shared.open(url)
-        }
-        decisionHandler(.cancel)
+    func scrollPosition() -> EditorScrollPosition {
+        editorScrollView?.editorScrollPosition() ?? EditorScrollPosition(verticalFraction: 0)
     }
 
-    private func loadShell() {
-        guard let webView else {
+    func applyScrollPosition(_ position: EditorScrollPosition) {
+        editorScrollView?.applyEditorScrollPosition(position)
+    }
+
+    private var editorTextView: NSTextView? {
+        hostingView.firstDescendant(of: NSTextView.self)
+    }
+
+    private var editorScrollView: NSScrollView? {
+        hostingView.firstDescendant(of: NSScrollView.self)
+    }
+
+    private func applyParagraphStyle() {
+        guard let textView = editorTextView else {
             return
         }
 
-        isReady = false
-        layoutDocumentContainer(minimumHeight: max(scrollView.contentView.bounds.height, 1))
-        webView.loadHTMLString(
-            RenderedEditorShellHTML.standard(
-                documentBaseURL: documentBaseURL,
-                localFileResourceScheme: LocalFileResourceSchemeHandler.scheme
-            ),
-            baseURL: documentBaseURL ?? Bundle.main.resourceURL
+        let text = textView.string as NSString
+        let selection = textView.selectedRange()
+        let lineRange = text.lineRange(for: selection)
+        let line = text.substring(with: lineRange)
+        let headingPrefixLength = line.prefix { $0 == "#" }.count
+        guard (1...6).contains(headingPrefixLength),
+              line.dropFirst(headingPrefixLength).first == " " else {
+            return
+        }
+
+        let prefixRange = NSRange(location: lineRange.location, length: headingPrefixLength + 1)
+        guard textView.shouldChangeText(in: prefixRange, replacementString: "") else {
+            return
+        }
+
+        textView.replaceCharacters(in: prefixRange, with: "")
+        textView.didChangeText()
+        let removedBeforeSelection = min(prefixRange.length, max(selection.location - prefixRange.location, 0))
+        textView.setSelectedRange(NSRange(
+            location: selection.location - removedBeforeSelection,
+            length: selection.length
+        ))
+    }
+
+    private func countMatches(query: String) -> Int {
+        guard !query.isEmpty, let textView = editorTextView else {
+            return 0
+        }
+
+        let text = textView.string as NSString
+        let options: NSString.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        var searchRange = NSRange(location: 0, length: text.length)
+        var count = 0
+
+        while searchRange.length > 0 {
+            let match = text.range(of: query, options: options, range: searchRange)
+            guard match.location != NSNotFound else {
+                break
+            }
+
+            count += 1
+            let nextLocation = match.location + max(match.length, 1)
+            searchRange = NSRange(location: nextLocation, length: text.length - nextLocation)
+        }
+
+        return count
+    }
+
+    private func postFindQuery(query: String, index: Int) {
+        NotificationCenter.default.post(
+            name: bus.findQuery,
+            object: nil,
+            userInfo: ["query": query, "currentIndex": index]
         )
     }
 
-    private func normalizedURL(_ url: URL?) -> URL? {
-        url?.standardizedFileURL.resolvingSymlinksInPath()
-    }
-
-    private func javaScriptStringLiteral(_ string: String) -> String {
-        guard let data = try? JSONEncoder().encode(string),
-              let json = String(data: data, encoding: .utf8) else {
-            return "\"\""
-        }
-        return json
-    }
-
-    private func configureScrollView() {
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.borderType = .noBorder
-        scrollView.autohidesScrollers = true
-        scrollView.drawsBackground = false
-        scrollView.scrollerStyle = .overlay
-        scrollView.automaticallyAdjustsContentInsets = true
-        scrollView.contentView.postsBoundsChangedNotifications = true
-        scrollView.contentView.postsFrameChangedNotifications = true
-        scrollView.postsFrameChangedNotifications = true
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(containerGeometryDidChange),
-            name: NSView.boundsDidChangeNotification,
-            object: scrollView.contentView
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(containerGeometryDidChange),
-            name: NSView.frameDidChangeNotification,
-            object: scrollView.contentView
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(containerGeometryDidChange),
-            name: NSView.frameDidChangeNotification,
-            object: scrollView
-        )
-
-        scrollView.documentView = documentContainerView
-    }
-
-    @objc
-    private func containerGeometryDidChange(_ notification: Notification) {
-        layoutDocumentContainer(minimumHeight: documentContainerView.frame.height)
-        scheduleHeightRefresh()
-    }
-
-    private func scheduleHeightRefresh(after delay: TimeInterval = 0.05) {
-        pendingHeightRefreshWorkItem?.cancel()
-
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.refreshDocumentHeight()
-        }
-        pendingHeightRefreshWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
-    }
-
-    private func refreshDocumentHeight() {
-        guard isReady, let webView else {
+    @objc private func handleFindResults(_ notification: Notification) {
+        guard let count = notification.userInfo?["count"] as? Int else {
             return
         }
-
-        let script = """
-        (() => {
-          const editor = document.getElementById('editor');
-          const body = document.body;
-          const doc = document.documentElement;
-          if (editor) {
-            void editor.offsetWidth;
-          }
-
-          window.dispatchEvent(new Event('resize'));
-          return Math.max(
-            editor ? editor.scrollHeight : 0,
-            editor ? editor.offsetHeight : 0,
-            editor ? Math.ceil(editor.getBoundingClientRect().height) : 0,
-            body ? body.scrollHeight : 0,
-            body ? body.offsetHeight : 0,
-            body ? body.clientHeight : 0,
-            doc ? doc.scrollHeight : 0,
-            doc ? doc.offsetHeight : 0,
-            doc ? doc.clientHeight : 0
-          );
-        })()
-        """
-
-        webView.evaluateJavaScript(script) { [weak self] result, error in
-            guard let self else {
-                return
-            }
-
-            if let error {
-                NSLog("Failed to measure rendered content height: %@", error.localizedDescription)
-                return
-            }
-
-            guard let value = result as? NSNumber else {
-                return
-            }
-
-            let height = CGFloat(truncating: value)
-            self.layoutDocumentContainer(minimumHeight: height)
+        latestSearchCount = count
+        if count == 0 {
+            currentSearchIndex = 0
+        } else {
+            currentSearchIndex = min(currentSearchIndex, count - 1)
         }
     }
+}
 
-    private func scrollCurrentMatchIntoView() {
-        guard let webView else {
-            return
+private extension NSView {
+    func firstDescendant<ViewType: NSView>(of type: ViewType.Type) -> ViewType? {
+        if let match = self as? ViewType {
+            return match
         }
 
-        let script = """
-        (() => {
-          const selection = window.getSelection();
-          if (!selection || selection.rangeCount === 0) {
-            return null;
-          }
-
-          const range = selection.getRangeAt(0);
-          const rect = range.getBoundingClientRect();
-          if (!rect || (rect.width === 0 && rect.height === 0)) {
-            return null;
-          }
-
-          return {
-            x: rect.left + window.scrollX,
-            y: rect.top + window.scrollY,
-            width: rect.width,
-            height: rect.height
-          };
-        })()
-        """
-
-        webView.evaluateJavaScript(script) { [weak self] result, error in
-            guard let self else {
-                return
+        for subview in subviews {
+            if let match = subview.firstDescendant(of: type) {
+                return match
             }
-
-            if let error {
-                NSLog("Failed to locate rendered search result: %@", error.localizedDescription)
-                return
-            }
-
-            guard let matchRect = self.domRect(from: result) else {
-                return
-            }
-
-            let visibleHeight = self.scrollView.contentView.bounds.height
-            let inset = max((visibleHeight - matchRect.height) * 0.5, 24)
-            self.documentContainerView.scrollToVisible(matchRect.insetBy(dx: 0, dy: -inset))
-            self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
-        }
-    }
-
-    private func domRect(from result: Any?) -> NSRect? {
-        guard let dictionary = result as? [String: Any],
-              let x = dictionary["x"] as? Double,
-              let y = dictionary["y"] as? Double,
-              let width = dictionary["width"] as? Double,
-              let height = dictionary["height"] as? Double,
-              let webView else {
-            return nil
         }
 
-        let rectInWebView = NSRect(x: x, y: y, width: width, height: max(height, 1))
-        return documentContainerView.convert(rectInWebView, from: webView)
-    }
-
-    private func layoutDocumentContainer(minimumHeight: CGFloat) {
-        let width = max(scrollView.contentView.bounds.width, 1)
-        let height = max(minimumHeight, scrollView.contentView.bounds.height, 1)
-        let frame = NSRect(x: 0, y: 0, width: width, height: height)
-        let widthChanged = abs(documentContainerView.frame.width - frame.width) > .ulpOfOne
-
-        if documentContainerView.frame != frame {
-            documentContainerView.frame = frame
-            documentContainerView.needsDisplay = true
-        }
-
-        webView?.frame = documentContainerView.bounds
-        webView?.needsDisplay = true
-
-        if widthChanged {
-            scheduleHeightRefresh(after: 0.15)
-        }
+        return nil
     }
 }

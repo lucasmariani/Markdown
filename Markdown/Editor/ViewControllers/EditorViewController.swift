@@ -96,13 +96,13 @@ final class EditorViewController: NSViewController {
 
     func setDocumentURL(_ fileURL: URL?) {
         documentURL = fileURL
+        renderedController.setDocumentURL(fileURL)
         let baseURL = fileURL?.deletingLastPathComponent()
         guard documentBaseURL?.standardizedFileURL != baseURL?.standardizedFileURL else {
             return
         }
 
         documentBaseURL = baseURL
-        renderedController.setDocumentBaseURL(baseURL)
     }
 
     // MARK: - NSViewController
@@ -115,23 +115,23 @@ final class EditorViewController: NSViewController {
 
         contentContainer.addSubview(contentSurface)
         contentSurface.addSubview(sourceController.scrollView)
-        contentSurface.addSubview(renderedController.scrollView)
+        contentSurface.addSubview(renderedController.view)
 
         sourceController.scrollView.translatesAutoresizingMaskIntoConstraints = false
-        renderedController.scrollView.translatesAutoresizingMaskIntoConstraints = false
+        renderedController.view.translatesAutoresizingMaskIntoConstraints = false
 
         installConstraints(in: contentContainer, contentSurface: contentSurface)
 
         self.view = contentContainer
         sourceController.scrollView.isHidden = (currentMode == .rendered)
-        renderedController.scrollView.isHidden = (currentMode == .source)
+        renderedController.view.isHidden = (currentMode == .source)
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         sourceController.setText(sourceText)
         if currentMode == .rendered {
-            _ = renderedController.ensureWebView()
+            _ = renderedController.ensureView()
         }
         updateVisibleEditor(for: currentMode)
         delegate?.editorViewController(self, didChangeMode: currentMode)
@@ -271,10 +271,10 @@ final class EditorViewController: NSViewController {
             sourceController.scrollView.topAnchor.constraint(equalTo: contentSurface.topAnchor),
             sourceController.scrollView.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor),
 
-            renderedController.scrollView.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
-            renderedController.scrollView.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor),
-            renderedController.scrollView.topAnchor.constraint(equalTo: contentSurface.topAnchor),
-            renderedController.scrollView.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor),
+            renderedController.view.leadingAnchor.constraint(equalTo: contentSurface.leadingAnchor),
+            renderedController.view.trailingAnchor.constraint(equalTo: contentSurface.trailingAnchor),
+            renderedController.view.topAnchor.constraint(equalTo: contentSurface.topAnchor),
+            renderedController.view.bottomAnchor.constraint(equalTo: contentSurface.bottomAnchor),
         ])
     }
 
@@ -290,12 +290,12 @@ final class EditorViewController: NSViewController {
             sourceText = latestSource
         }
 
-        return renderedController.ensureWebView()
+        return renderedController.ensureView()
     }
 
     private func updateVisibleEditor(for mode: EditorMode) {
         sourceController.scrollView.isHidden = (mode == .rendered)
-        renderedController.scrollView.isHidden = (mode == .source)
+        renderedController.view.isHidden = (mode == .source)
 
         switch mode {
         case .rendered:
@@ -312,7 +312,7 @@ final class EditorViewController: NSViewController {
         case .source:
             sourceController.scrollView.editorScrollPosition()
         case .rendered:
-            renderedController.scrollView.editorScrollPosition()
+            renderedController.scrollPosition()
         }
     }
 
@@ -336,7 +336,7 @@ final class EditorViewController: NSViewController {
         case .source:
             sourceController.scrollView.applyEditorScrollPosition(position)
         case .rendered:
-            renderedController.scrollView.applyEditorScrollPosition(position)
+            renderedController.applyScrollPosition(position)
         }
     }
 

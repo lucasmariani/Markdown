@@ -175,48 +175,33 @@ struct MarkdownDocumentTests {
     }
 
     @Test
-    func renderedShellUsesDocumentDirectoryForRelativeAssets() {
-        let directoryURL = URL(fileURLWithPath: "/tmp/MarkdownTests Assets/", isDirectory: true)
-        let shell = RenderedEditorShellHTML.standard(
-            documentBaseURL: directoryURL,
-            localFileResourceScheme: "markdown-local-resource"
-        )
+    func documentImageProviderResolvesRelativeAndPercentEncodedPaths() throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/MarkdownTests Assets", isDirectory: true)
+        let provider = DocumentImageProvider(documentDirectoryURL: rootURL)
 
-        #expect(shell.contains("<base href=\"file:///tmp/MarkdownTests%20Assets/\">"))
-        #expect(shell.contains("const localFileRoot = \"file:\\/\\/\\/tmp\\/MarkdownTests%20Assets\\/\";"))
-        #expect(shell.contains("const localFileResourceScheme = \"markdown-local-resource\";"))
-        #expect(shell.contains("const allowedImageSchemes = new Set(['data:', 'http:', 'https:']);"))
-        #expect(shell.contains("return `${localFileResourceScheme}://asset?url=${encodeURIComponent(fileURL.href)}`;"))
+        let plainURL = try #require(provider.resolvedFileURL(for: "images/chart.png"))
+        let encodedURL = try #require(provider.resolvedFileURL(for: "images/My%20Chart.png"))
+
+        #expect(plainURL.path(percentEncoded: false) == "/tmp/MarkdownTests Assets/images/chart.png")
+        #expect(encodedURL.path(percentEncoded: false) == "/tmp/MarkdownTests Assets/images/My Chart.png")
     }
 
     @Test
-    func renderedShellExposesEditableMarkdownBridge() {
-        let shell = RenderedEditorShellHTML.standard(
-            documentBaseURL: nil,
-            localFileResourceScheme: "markdown-local-resource"
-        )
+    func documentImageProviderRejectsEscapesAndRemoteURLs() {
+        let rootURL = URL(fileURLWithPath: "/tmp/MarkdownTests", isDirectory: true)
+        let provider = DocumentImageProvider(documentDirectoryURL: rootURL)
 
-        #expect(shell.contains("contenteditable=\"true\""))
-        #expect(shell.contains("spellcheck=\"false\""))
-        #expect(shell.contains("autocorrect=\"off\""))
-        #expect(shell.contains("autocapitalize=\"none\""))
-        #expect(shell.contains("window.applyMarkdownFormatting = (command) =>"))
-        #expect(shell.contains("function serializeEditorToMarkdown()"))
-        #expect(shell.contains("const blockTags = new Set"))
-        #expect(shell.contains("function hasBlockChildren(element)"))
-        #expect(shell.contains("function isListItemElement(element)"))
-        #expect(shell.contains("function toggleCurrentBlockList(ordered)"))
-        #expect(shell.contains("toggleCurrentBlockList(false);"))
-        #expect(shell.contains("toggleCurrentBlockList(true);"))
-        #expect(shell.contains("return serializeChildren(element);"))
-        #expect(shell.contains("function rememberSelection()"))
-        #expect(shell.contains("function restoreSelection()"))
-        #expect(shell.contains("return trimTrailingBlankLines(serializeChildren(editor));"))
-        #expect(shell.contains("function trimTrailingBlankLines(markdown)"))
-        #expect(shell.contains("window.webkit?.messageHandlers?.renderedEditor"))
-        #expect(shell.contains("function preventMarkdownPunctuationAutocorrection(event)"))
-        #expect(shell.contains("editor.addEventListener('beforeinput', preventMarkdownPunctuationAutocorrection);"))
-        #expect(shell.contains("editor.addEventListener('input', scheduleMarkdownDidChange);"))
+        #expect(provider.resolvedFileURL(for: "../secret.png") == nil)
+        #expect(provider.resolvedFileURL(for: "/tmp/elsewhere.png") == nil)
+        #expect(provider.resolvedFileURL(for: "https://example.com/image.png") == nil)
+    }
+
+    @Test
+    func renderedEditorUsesNativeHostingViewInsteadOfWebKit() {
+        let controller = RenderedEditorController()
+
+        #expect(controller.ensureView())
+        #expect(!containsWebView(in: controller.view))
     }
 
     @Test
@@ -437,6 +422,14 @@ struct MarkdownDocumentTests {
 
         \(sections.joined(separator: "\n\n"))
         """
+    }
+
+    private func containsWebView(in view: NSView) -> Bool {
+        if String(describing: type(of: view)).contains("WKWebView") {
+            return true
+        }
+
+        return view.subviews.contains(where: containsWebView(in:))
     }
 
     private func testScrollView(isDocumentFlipped: Bool) -> NSScrollView {

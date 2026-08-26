@@ -214,7 +214,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2630;
-				LastUpgradeCheck = 2640;
+				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					A01C160F2F58D7F200081EC9 = {
 						CreatedOnToolsVersion = 26.3;
@@ -322,7 +322,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown.QuickLookPreview;
 				PRODUCT_MODULE_NAME = MarkdownQuickLookPreview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -464,6 +464,7 @@
 		A01C161C2F58D7F200081EC9 /* Debug configuration for PBXNativeTarget "Markdown" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = Markdown;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
@@ -488,7 +489,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown;
 				PRODUCT_MODULE_NAME = MarkdownApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -506,6 +507,7 @@
 		A01C161D2F58D7F200081EC9 /* Release configuration for PBXNativeTarget "Markdown" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = Markdown;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
@@ -530,7 +532,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown;
 				PRODUCT_MODULE_NAME = MarkdownApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -562,6 +564,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.MarkdownTests;
 				PRODUCT_MODULE_NAME = MarkdownTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -593,6 +596,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.MarkdownTests;
 				PRODUCT_MODULE_NAME = MarkdownTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -626,7 +630,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.rianamiCorp.Markdown.QuickLookPreview;
 				PRODUCT_MODULE_NAME = MarkdownQuickLookPreview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
